@@ -1,6 +1,7 @@
 # Universal Dashboard Summary Cards Design
 
 Date: 2026-06-12
+Status: Reviewed and gap-filled 2026-06-12; ready for implementation.
 
 ## Summary
 
@@ -11,9 +12,9 @@ This design standardizes the top summary-card set across `Overview`, `Codex`, `C
 The selected direction is:
 
 - Strict universal top cards.
-- One combined `Usage limits` card in the universal top-card set.
+- One combined `Usage Limits` card in the universal top-card set.
 - Limit values show remaining capacity.
-- In `Overview`, the `Usage limits` card shows concise provider lines.
+- In `Overview`, the `Usage Limits` card shows concise provider lines.
 - Provider-specific details appear below the universal cards, not inside the universal card labels.
 
 ## Goals
@@ -32,100 +33,124 @@ The selected direction is:
 - Do not add remote account or pricing API calls.
 - Do not infer missing usage limits from model usage when a provider snapshot is unavailable.
 - Do not change cost or credit calculation semantics in this slice.
+- Do not rename provider-specific strings outside the top-card region: the `Highest Codex credits` sort option, investigation presets, insight captions, and Call/Thread detail panels keep their current wording.
 
 ## Current Behavior
 
-The dashboard template defines eight card slots:
+The dashboard template (`src/codex_usage_tracker/plugin_data/dashboard/dashboard_template.html`, `.cards` block) defines eight card slots:
 
-- `Visible Calls`
-- `Total Tokens`
-- `Cached Input`
-- `Uncached Input`
-- `Reasoning Output`
-- `Estimated Cost`
-- `Codex Credits`
-- `Codex Remaining`
+- `Visible Calls` (static label, `#visibleCalls`)
+- `Total Tokens` (`#totalTokensCard`)
+- `Cached Input` (`#cachedTokensCard`, carries a dead `data-anthropic-label="Cache Read"` attribute)
+- `Uncached Input` (`#uncachedTokensCard`, carries a dead `data-anthropic-label="Direct Input"` attribute)
+- `Reasoning Output` (`#reasoningTokensCard`)
+- `Estimated Cost` (static label, `#estimatedCost`)
+- `Codex Credits` (`#usageCreditsCard`)
+- `Codex Remaining` (`#allowanceCard`)
 
-Dashboard JavaScript then mutates several labels and tooltips through provider profiles:
+Dashboard JavaScript then mutates labels and tooltips through the `providerProfiles` object in `updateSummaryCards`:
 
 - `Overview` keeps `Codex Credits` and `Codex Remaining` while explaining that these apply only to Codex/OpenAI rows.
 - `Codex` uses Codex-specific labels and allowance/credit semantics.
-- `Claude Code` relabels cached input to `Cache Read`, uncached input to `Direct Input`, `Codex Credits` to `Output Tokens`, and `Codex Remaining` to `Claude Remaining`.
+- `Claude Code` relabels cached input to `Cache Read`, uncached input to `Direct Input`, `Codex Credits` to `Output Tokens` (sum of visible output tokens), and `Codex Remaining` to `Claude Remaining`.
 
 This makes the same card position mean different things depending on provider scope. It also makes Overview hard to interpret because provider-specific labels appear in a mixed-provider view.
 
 ## Target Top-Card Contract
 
-The top summary cards should always render this exact order:
+The top summary cards always render this exact order with these exact labels (Title Case, matching the dashboard's existing label style):
 
-1. `Visible calls`
-2. `Total tokens`
-3. `Input tokens`
-4. `Cache tokens`
-5. `Output tokens`
-6. `Reasoning tokens`
-7. `Estimated cost`
-8. `Usage limits`
+1. `Visible Calls`
+2. `Total Tokens`
+3. `Input Tokens`
+4. `Cache Tokens`
+5. `Output Tokens`
+6. `Reasoning Tokens`
+7. `Estimated Cost`
+8. `Usage Limits`
 
-These labels do not change across Overview, Codex, Claude Code, or future provider tabs.
+These labels do not change across Overview, Codex, Claude Code, or future provider tabs. The `Codex Credits` and `Codex Remaining` top-card slots are removed; their two positions are taken by the new standalone `Output Tokens` card and the combined `Usage Limits` card, keeping the count at eight.
 
 ### Card Semantics
 
-`Visible calls`
+`Visible Calls`
 
 - Count of calls after the active provider, app, model, confidence, search, time, history, and preset filters.
 - Same as today.
 
-`Total tokens`
+`Total Tokens`
 
 - Sum of provider-reported total tokens for visible rows.
-- Tooltip should state that provider total-token definitions may include cache reads or cache writes depending on source.
+- Tooltip states that provider total-token definitions may include cache reads or cache writes depending on source.
 
-`Input tokens`
+`Input Tokens`
 
-- Sum of fresh/direct input represented by the existing derived uncached/direct-input aggregate.
-- This replaces the current provider-specific `Uncached Input` / `Direct Input` top-card label.
-- Tooltip should explain that this is the best cross-provider approximation of input that was not served from cache.
+- `sum(uncached_input_tokens)` — the existing derived fresh/direct-input aggregate.
+- Replaces the provider-specific `Uncached Input` / `Direct Input` top-card label.
+- Tooltip: best cross-provider approximation of input that was not served from cache; raw provider input buckets remain in Call Details.
 
-`Cache tokens`
+`Cache Tokens`
 
-- Sum of cached/reused token activity visible in the current rows.
-- For Codex/OpenAI rows, use cached input tokens.
-- For Claude Code rows, include cache-read tokens and cache-creation tokens when both are available.
-- Tooltip should break down cache read and cache creation where the data is available.
-- The card label stays `Cache tokens`, not `Cached input`, `Cache read`, or `Cache write`.
+- `sum(cached_input_tokens) + sum(cache_creation_input_tokens)`.
+- For Codex/OpenAI rows `cache_creation_input_tokens` is always zero, so this equals today's cached-input summary; for Claude Code it surfaces cache reads plus cache writes as one cache-activity number.
+- Tooltip breaks down the buckets when both are nonzero:
 
-`Output tokens`
+  ```text
+  Cache read: <sum cached_input_tokens>
+  Cache creation: <sum cache_creation_input_tokens>
+  ```
 
-- Sum of visible output tokens.
-- This replaces the current behavior where output tokens are shown only by repurposing the old Codex credit slot in Claude Code scope.
+  If cache creation is zero across visible rows, omit that line.
+- The label stays `Cache Tokens` — never `Cached Input`, `Cache Read`, or `Cache Write`.
 
-`Reasoning tokens`
+`Output Tokens`
 
-- Sum of visible reasoning/thinking output tokens.
-- If a provider does not report reasoning tokens, the value is `0` and the tooltip should say the visible provider does not expose a stable reasoning-token bucket.
+- `sum(output_tokens)` for visible rows.
+- Promotes output volume to a first-class universal card; previously it was visible only by repurposing the old Codex-credit slot in Claude Code scope.
 
-`Estimated cost`
+`Reasoning Tokens`
 
-- Same aggregate cost value as today.
-- Keep `Not configured` when pricing is unavailable.
-- Tooltip should keep the existing pricing confidence caveat where practical.
+- `sum(reasoning_output_tokens)` for visible rows.
+- If the visible provider does not report reasoning tokens, the value is `0` and the tooltip says the provider does not expose a stable reasoning-token bucket.
 
-`Usage limits`
+`Estimated Cost`
 
-- Shows remaining usage capacity, not used percentage.
-- In a single-provider scope, show that provider's remaining windows.
-- In `Overview`, show concise provider lines for each visible provider that has a supported limit snapshot.
-- Missing snapshots render stable unavailable text instead of changing the card label.
+- Same aggregate cost value as today; `Not configured` when pricing is unavailable.
+- Tooltip keeps the existing pricing-confidence caveat.
+
+`Usage Limits`
+
+- Shows remaining capacity, never used percentage.
+- Single-provider scope: that provider's remaining windows.
+- Overview: one concise line per visible provider that has a supported limit snapshot.
+- Missing snapshots render stable unavailable text; the card label never changes.
+- Excluded from the count-up animation (multi-line text, not a single number).
 
 ## Usage Limits Display
 
-The universal `Usage limits` card should display short-window and weekly remaining values because Codex and Claude Code both fit that mental model in local dashboard data.
+### Data Source
 
-Preferred display labels:
+The payload already ships a unified per-provider shape — consume it directly instead of re-deriving windows:
 
-- `5h`
-- `weekly`
+```text
+payload.provider_limit_snapshots = {
+  openai:    { provider, app, label, configured, windows[], source{}, error },
+  anthropic: { provider, app, label, configured, windows[], source{}, error },
+}
+```
+
+Each window is an `AllowanceWindow` dict with canonical fields: `key` (`five_hour` | `weekly`), `label`, `remaining_percent` (0–1 or null), `remaining_credits` (number or null), `total_credits`, `reset_at`, `captured_at`. Window keys are already normalized at capture time (`parse_codex_rate_limit_windows`, `parse_claude_rate_limit_windows`), so the UI does **not** need the alias mapping (`primary`, `300 minutes`, `7d`, …) — that logic lives in Python and stays there. The UI only needs a display-label map:
+
+- `five_hour` → `5h`
+- `weekly` → `weekly`
+- any unknown key → render the window's stored `label` as-is
+
+Do not read the legacy top-level `allowance_windows` array for this card; that array remains in the payload for Codex credit-impact text in the provider-specific section.
+
+### Display Rules
+
+- Value preference per window: `remaining_percent` (rendered as a whole percentage via the existing `pct()` helper) → else `remaining_credits` with a ` cr` suffix → else, if only reset metadata exists, `configured` with details in the tooltip.
+- Provider display names: `openai` → `Codex`, `anthropic` → `Claude`; future providers fall back to `providerTabLabel()`.
 
 Single-provider examples:
 
@@ -141,186 +166,147 @@ Codex 5h 72% · weekly 41%
 Claude 5h 48% · weekly 33%
 ```
 
-If a provider has only one window:
+One window only:
 
 ```text
 Codex 5h 72%
 Claude weekly 33%
 ```
 
-If a provider is visible but has no snapshot:
+Provider visible but no snapshot (`configured` false or empty `windows`):
 
 ```text
 Codex 5h 72% · weekly 41%
 Claude no snapshot
 ```
 
-If no visible provider has supported limit data:
+No visible provider has supported limit data:
 
 ```text
 No snapshots
 ```
 
-The card title/tooltip should include reset timestamps and source names when available. Long reset/source details should not be crammed into the card body.
+No rows in the current filter range:
+
+```text
+No data in range
+```
+
+### Provider-Line Eligibility
+
+A provider gets a line in Overview when it appears in the visible rows (same provider set that drives the provider tabs) — not merely because a snapshot file exists. Filtering Overview down to one provider through the Provider or App filters naturally collapses the card to that provider's line.
+
+### Tooltip
+
+The card tooltip includes, per provider: window reset timestamps (`reset_at`), snapshot source name, and `captured_at`. If a snapshot's `captured_at` is older than 24 hours, append a staleness note (for example `captured 2026-06-10 — may be stale`) to the tooltip only; the card body never shows staleness markers. When a snapshot is missing, the tooltip carries the existing actionable setup hint (`Add ~/.codex-usage-tracker/allowance.json …` for Codex, `Capture Claude Code statusLine rate_limits …` for Claude); the card body keeps the short stable text.
 
 ## Provider-Specific Section
 
-Add a clearly separated provider-specific section below the universal cards and above the Insights/table area. It can be a compact strip or small grouped panel, but it should not look like another competing primary summary row.
+Add a clearly separated provider-specific section between the `.cards` grid and the Insights panel (`#insightsPanel`). Implementation shape: a compact strip (`#providerDetails`) with a small heading and per-provider groups of key-value chips. It must read as secondary to the universal summary — smaller type, no card chrome competing with the top row.
 
-This section should hold provider-specific metrics and caveats, including:
+Contents:
 
-- `Codex credits`
-- Codex credit-rate coverage
-- Credit-rate source and fetched timestamp
-- Codex allowance reset timestamps
-- Claude limit reset timestamps
-- Claude status-line snapshot source and captured timestamp
-- Pricing coverage or pricing confidence summary
-- Missing pricing, missing credit-rate, or missing limit-snapshot caveats
-- Rows where Codex credits are not applicable
+- **Codex group**: `Codex credits` total for visible rows, credit-rate coverage (existing `creditCoverageRatio`), credit-rate source name and fetched timestamp, allowance window reset timestamps, allowance-impact text (existing `allowanceImpactText` output), and the not-applicable-rows caveat.
+- **Claude Code group**: limit snapshot source and captured timestamp, window reset timestamps, and (optional, post-MVP) captured-effort coverage for visible Claude calls.
+- **Global**: pricing coverage / pricing-confidence summary and missing-pricing, missing-credit-rate, or missing-snapshot caveats.
 
-In Overview, the provider-specific section should group details by provider when the values differ. In a provider tab, it should show only the selected provider's relevant details plus any global pricing caveat that still affects the visible rows.
+The existing `#allowanceSource` status line (built by `updateAllowanceSourceLine`) duplicates much of this content; fold it into this section rather than rendering both.
+
+Behavior:
+
+- Overview: group details by provider; show a group only for providers present in the visible rows.
+- Provider tab: show only the selected provider's group plus any global pricing caveat affecting visible rows.
+- Empty state: if no group has content, hide the section entirely (no empty heading).
 
 ## Data And Computation
 
-No new persisted data is required for the first implementation. The dashboard payload already includes the aggregate fields needed for the universal card set:
+No new persisted data and no payload schema changes are required. Fields consumed:
 
-- `total_tokens`
-- `input_tokens`
-- `cached_input_tokens`
-- `cache_creation_input_tokens`
-- `uncached_input_tokens`
-- `output_tokens`
-- `reasoning_output_tokens`
+- `total_tokens`, `input_tokens`, `cached_input_tokens`, `cache_creation_input_tokens`, `uncached_input_tokens`, `output_tokens`, `reasoning_output_tokens`
 - `estimated_cost_usd`
-- `usage_credits`
-- `usage_credit_confidence`
+- `usage_credits`, `usage_credit_confidence`
 - provider/app identity fields
-- allowance and provider limit snapshot payloads
+- `provider_limit_snapshots` (universal card) and `allowance_windows` (provider details only)
 
-The dashboard should centralize summary-card calculations into a provider-neutral model. A useful shape would be:
+Centralize the calculations in two pure builders in `dashboard.js`:
 
 ```text
 buildUniversalSummary(rows, payloadState) -> {
-  visibleCalls,
-  totalTokens,
-  inputTokens,
-  cacheTokens,
-  outputTokens,
-  reasoningTokens,
-  estimatedCost,
-  usageLimits
+  visibleCalls, totalTokens, inputTokens, cacheTokens, cacheReadTokens,
+  cacheCreationTokens, outputTokens, reasoningTokens, estimatedCost,
+  usageLimits: { state: 'lines' | 'no-snapshots' | 'no-data', lines: [{ providerKey, providerLabel, windows }] }
 }
-```
 
-Provider-specific details should be built separately:
-
-```text
 buildProviderDetails(rows, payloadState) -> ProviderDetailGroup[]
 ```
 
-This split prevents new providers from mutating the universal top-card contract.
+`updateSummaryCards` consumes `buildUniversalSummary` output and stops reading `providerProfiles` for labels. This split prevents new providers from mutating the universal top-card contract.
 
-### Cache Token Calculation
+## Template And JavaScript Migration Map
 
-Cache token display should avoid provider-specific labels at the top level while still being honest in tooltips.
+### Template (`dashboard_template.html`)
 
-Recommended calculation:
+| Current | Target |
+| --- | --- |
+| `Visible Calls` / `#visibleCalls` | unchanged |
+| `#totalTokensCard` / `#totalTokens` | unchanged, drop `#totalTokensLabel` span id (label becomes static) |
+| `#cachedTokensCard` / `#cachedTokens` + `data-anthropic-label` | `#cacheTokensCard` / `#cacheTokens`, static `Cache Tokens` label, attribute deleted |
+| `#uncachedTokensCard` / `#uncachedTokens` + `data-anthropic-label` | `#inputTokensCard` / `#inputTokens`, static `Input Tokens` label, attribute deleted (moves to position 3) |
+| `#reasoningTokensCard` / `#reasoningTokens` | unchanged label `Reasoning Tokens` (moves to position 6) |
+| `Estimated Cost` / `#estimatedCost` | unchanged |
+| `#usageCreditsCard` / `#usageCredits` | replaced by `#outputTokensCard` / `#outputTokens` (position 5) |
+| `#allowanceCard` / `#allowanceImpact` | replaced by `#usageLimitsCard` / `#usageLimits` (position 8) |
 
-```text
-cacheTokens = sum(cached_input_tokens) + sum(cache_creation_input_tokens)
+New section skeleton inserted after `.cards`:
+
+```html
+<section id="providerDetails" class="provider-details" hidden>
+  <h2>Provider Details</h2>
+  <div id="providerDetailGroups"></div>
+</section>
 ```
 
-For providers where `cache_creation_input_tokens` is always zero, this equals today's cached-input summary. For Claude Code, it surfaces both cache read and cache creation as cache activity.
+### JavaScript (`dashboard.js`)
 
-The tooltip should include:
+- `providerProfiles`: delete `totalLabel/totalTitle`, `cachedLabel/cachedTitle`, `uncachedLabel/uncachedTitle`, `reasoningLabel/reasoningTitle`, `creditsLabel/creditsTitle/creditsUnavailable`, `remainingLabel/remainingUnavailable`. Keep `summary` and `insightsCaption` (provider tabs still describe scope).
+- `updateSummaryCards`: rewrite against `buildUniversalSummary`; remove the anthropic special-case added for the interim `Output Tokens` card.
+- `COUNT_UP_IDS`: becomes `['visibleCalls', 'totalTokens', 'inputTokens', 'cacheTokens', 'outputTokens', 'reasoningTokens', 'estimatedCost']`. `usageLimits` is excluded.
+- `allowanceImpactText`, `allowanceCardTitle`, `limitWindowText`, `providerLimitWindowText`: refactor into the usage-limits renderer and provider-details builder; delete dead branches.
+- `updateAllowanceSourceLine` and `#allowanceSource`: fold into `buildProviderDetails` rendering.
+- `isNonCodexProviderScope`, `creditCoverageRatio`, `sumUsageCredits`, `credits()`: still used by the provider-details Codex group and the insight builder; unchanged semantics.
+- URL state (`dashboard_state.js`): no changes — no card state is persisted.
 
-```text
-Cache read: <sum cached_input_tokens>
-Cache creation: <sum cache_creation_input_tokens>
-```
+### CSS (`dashboard.css` / sunset theme)
 
-If cache creation is zero for all visible rows, the tooltip can omit that line.
-
-### Input Token Calculation
-
-`Input tokens` should use:
-
-```text
-inputTokens = sum(uncached_input_tokens)
-```
-
-This is the cross-provider "fresh/direct input" card. It avoids the ambiguity of provider-reported `input_tokens`, which can include cache creation and cache reads for some providers.
-
-The provider-specific section or details panel can still expose raw provider input buckets.
-
-### Usage Limit Normalization
-
-The UI should normalize available limit windows into these canonical display keys:
-
-- `five_hour`
-- `weekly`
-
-Known aliases should map into those keys:
-
-- `5h`, `five_hour`, `five-hour`, `primary`, or windows up to 300 minutes map to `five_hour`.
-- `7d`, `seven_day`, `weekly`, or windows longer than 300 minutes map to `weekly`.
-
-For each visible provider, choose the newest available snapshot from the existing payload state. Do not synthesize a value if the snapshot is missing.
-
-The display value should prefer `remaining_percent`. If only `remaining_credits` exists, display credits with a clear suffix. If only reset metadata exists, display `configured` and leave details in the tooltip.
+- New `provider-details` styles must follow the Terminal Sunset token system (custom-property colors, WCAG 3:1 borders, reduced-motion-safe transitions) like the rest of the theme.
+- The `.cards` grid keeps eight cards; mobile stays one card per row at narrow widths with no horizontal scrolling. Long `Usage Limits` lines wrap within existing card dimensions (allow the strong/value element to use a smaller font or `white-space: normal` for this card only).
 
 ## UI Behavior
 
 ### Overview
 
-Overview keeps the same eight universal cards. `Usage limits` contains one concise line per provider with a supported limit concept.
-
-Example:
-
-```text
-Codex 5h 72% · weekly 41%
-Claude 5h 48% · weekly 33%
-```
-
-If the user filters Overview down to one provider through the Provider or App filters, the card naturally collapses to that provider's line.
+Eight universal cards; `Usage Limits` shows one line per visible provider with a supported limit snapshot (see examples above).
 
 ### Provider Tabs
 
-Provider tabs keep the same eight universal cards and hide non-visible provider limit lines.
-
-Codex tab example:
-
-```text
-5h 72%
-weekly 41%
-```
-
-Claude Code tab example:
-
-```text
-5h 48%
-weekly 33%
-```
+Same eight cards; `Usage Limits` hides non-visible provider lines.
 
 ### Missing Or Partial Data
 
-The card labels do not change when data is missing.
+Card labels never change when data is missing:
 
-Examples:
-
-- Missing pricing: `Estimated cost` value is `Not configured`.
-- Missing limits: `Usage limits` value is `No snapshots`.
-- One missing provider in Overview: show the available provider values plus `<Provider> no snapshot`.
-- Reasoning tokens unsupported: `Reasoning tokens` value is `0`.
+- Missing pricing: `Estimated Cost` value is `Not configured`.
+- Missing limits: `Usage Limits` value is `No snapshots`.
+- One missing provider in Overview: available provider lines plus `<Provider> no snapshot`.
+- Reasoning unsupported: `Reasoning Tokens` value is `0`.
+- Zero visible rows: numeric cards show `0`, `Usage Limits` shows `No data in range`.
 
 ### Accessibility And Layout
 
-- Card labels should remain short and stable.
-- Long `Usage limits` lines should wrap cleanly within the existing card dimensions.
-- Tooltips should describe provider caveats without relying only on color.
-- The provider-specific section should have a heading that makes it clearly secondary to the universal summary.
-- Mobile layout should remain one card per row at narrow widths and should not introduce horizontal scrolling.
+- Card labels short and stable; tooltips describe provider caveats without relying on color alone.
+- `Usage Limits` lines wrap cleanly; no horizontal scrolling at narrow widths.
+- Provider-specific section has a real heading (`h2`) and is skipped (hidden) when empty so screen readers do not land on an empty region.
+- Live refresh: builders are pure functions of `(rows, payloadState)`, so re-render on the 10s refresh tick needs no special handling.
 
 ## Documentation Updates
 
@@ -330,7 +316,7 @@ Update at least:
 - `docs/dashboard-guide.md`
 - `docs/architecture.md` if the UI architecture split is worth documenting
 - `docs/cli-reference.md` if visible dashboard workflow text mentions the old card labels
-- Packaged dashboard guide HTML if it is committed/generated manually in this repo
+- `src/codex_usage_tracker/plugin_data/docs/dashboard-guide.html` (committed copy)
 - `skills/codex-usage-tracker/SKILL.md`
 - `src/codex_usage_tracker/plugin_data/skills/codex-usage-tracker/SKILL.md`
 
@@ -339,60 +325,68 @@ Docs should say:
 - Top cards are universal and provider-neutral.
 - Provider tabs change row scope, not top-card meanings.
 - Provider-specific usage/credit/limit details live below the top cards and in details panels.
-- `Usage limits` shows remaining capacity.
+- `Usage Limits` shows remaining capacity.
 - Overview shows provider lines when multiple providers are visible.
 
 ## Testing Plan
 
-Add or update tests in the dashboard test suite to verify:
+Scope label assertions to the top-card region (the `.cards` block of the generated HTML), not the whole document — `Highest Codex credits` (sort menu), preset labels, and detail-panel strings legitimately survive elsewhere.
 
-- Generated dashboard HTML contains the exact universal card labels.
-- Generated dashboard HTML no longer uses provider-specific labels in the top-card template such as `Codex Credits`, `Codex Remaining`, `Claude Remaining`, `Cache Read`, or `Direct Input`.
-- Dashboard JavaScript no longer relabels top cards based on provider profile.
-- Overview limit rendering can include both Codex and Claude provider lines.
-- Codex provider scope renders only Codex limit values.
-- Claude provider scope renders only Claude limit values.
-- Missing limit snapshots produce stable unavailable text.
-- Cache token totals include `cached_input_tokens` and `cache_creation_input_tokens`.
-- Provider-specific details still expose Codex credits and Claude snapshot metadata.
-- Existing aggregate-only guarantees remain in place.
-- Dashboard JavaScript syntax checks pass.
+Add or update tests in `tests/test_store_dashboard_mcp.py` to verify:
+
+- The `.cards` block contains the eight universal labels in the contract order.
+- The `.cards` block no longer contains `Codex Credits`, `Codex Remaining`, `Claude Remaining`, `Cache Read`, `Direct Input`, or `data-anthropic-label`.
+- `providerProfiles` in `dashboard.js` no longer carries top-card label keys (`creditsLabel`, `remainingLabel`, `cachedLabel`, …).
+- Overview limit rendering can include both Codex and Claude provider lines (feed both snapshots through `provider_limit_snapshots` fixtures).
+- Codex scope renders only Codex limit values; Claude scope only Claude values.
+- Missing limit snapshots produce the stable unavailable texts (`no snapshot`, `No snapshots`).
+- Cache token totals include both `cached_input_tokens` and `cache_creation_input_tokens`.
+- Provider-specific section still exposes Codex credits and Claude snapshot metadata.
+- Existing aggregate-only guarantees remain (no raw text in fixtures or payloads).
+- Existing assertions that pin the old labels/IDs (`usageCreditsLabel`, `Highest Codex credits` option, dashboard JS `Codex credits` strings) are reviewed: keep the sort-option assertion, update or delete top-card ones.
 
 Suggested focused commands:
 
 ```bash
 python -m pytest tests/test_store_dashboard_mcp.py -v
 node --check src/codex_usage_tracker/plugin_data/dashboard/dashboard.js
+node --check src/codex_usage_tracker/plugin_data/dashboard/dashboard_data.js
 node --check src/codex_usage_tracker/plugin_data/dashboard/dashboard_state.js
 python scripts/check_release.py
 ```
 
-Run the full test suite before merging:
+Full gate before merging:
 
 ```bash
 python -m pytest
 python -m ruff check .
+python -m mypy
 git diff --check
 ```
 
 ## Rollout Plan
 
-1. Add failing dashboard tests for the universal top-card contract.
-2. Replace provider-specific top-card relabeling with provider-neutral labels and calculations.
-3. Add a provider-specific details section below the universal cards.
-4. Normalize `Usage limits` display for Codex, Claude, Overview, missing snapshots, and partial snapshots.
-5. Update docs and packaged copies.
-6. Reinstall or rebuild local command assets when testing installed CLI behavior, because dashboard assets are bundled into the installed package.
-7. Run focused dashboard checks, then the full local gate.
+1. Add failing dashboard tests for the universal top-card contract (labels, order, absence of provider-specific top-card strings).
+2. Update `dashboard_template.html`: new card IDs/labels/order, delete `data-anthropic-label` attributes, add the `#providerDetails` skeleton.
+3. Implement `buildUniversalSummary` / `buildProviderDetails` in `dashboard.js`; rewrite `updateSummaryCards`; update `COUNT_UP_IDS`; strip label keys from `providerProfiles`; remove the interim anthropic `Output Tokens` branch.
+4. Implement the `Usage Limits` renderer over `provider_limit_snapshots` (display-label map, value preference, stale tooltip, unavailable texts).
+5. Render the provider-specific section; fold in `#allowanceSource`.
+6. Add `provider-details` styles within the Terminal Sunset token system.
+7. Update docs and packaged copies.
+8. Reinstall local command assets when testing installed CLI behavior (`pipx` venv bundles dashboard assets; repo edits do not reach the installed statusline/server until reinstalled).
+9. Run focused dashboard checks, then the full local gate.
 
-## Open Questions
+## Resolved Questions
 
-No product-blocking questions remain from the brainstorming session. The selected decisions are:
+- Strict universal top-card labels in Title Case (`Visible Calls` … `Usage Limits`).
+- Combined `Usage Limits` card consuming `provider_limit_snapshots` only.
+- Remaining-capacity display, `pct()` whole-percent rendering, `cr` suffix fallback.
+- Provider lines in Overview, eligibility tied to visible rows.
+- Provider-specific details strip below the universal cards, replacing `#allowanceSource`.
+- Staleness (>24h) noted in tooltips only.
+- No UI-side window alias mapping; canonical keys come from the Python capture layer.
 
-- Strict universal top-card labels.
-- Combined `Usage limits` card.
-- Remaining-capacity display.
-- Provider lines in Overview.
-- Provider-specific details below the universal cards.
+## Remaining Open Questions
 
-Implementation may still need small wording decisions for exact unavailable text, but those should follow the rules above and can be resolved in code review.
+- Exact microcopy for the provider-details chips (resolve in code review; follow the unavailable-text rules above).
+- Whether captured-effort coverage for Claude calls joins the Claude details group in this slice or a follow-up (suggest follow-up).
