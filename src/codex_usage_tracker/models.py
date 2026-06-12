@@ -7,11 +7,12 @@ from dataclasses import asdict, dataclass, field
 
 @dataclass(frozen=True)
 class SessionInfo:
-    """Metadata from Codex's session index."""
+    """Metadata from a source's session index."""
 
     session_id: str
     thread_name: str | None
     updated_at: str | None
+    effort: str | None = None
 
 
 @dataclass(frozen=True)

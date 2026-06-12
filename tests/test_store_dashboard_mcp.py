@@ -660,7 +660,7 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "Live refresh every" in dashboard_js
     assert "Refreshing local usage index" in dashboard_js
     assert "loadLimit" not in dashboard
-    assert "Run codex-usage-tracker serve-dashboard to load every call in range." in dashboard_js
+    assert "Run ai-usage-dashboard serve-dashboard to load every call in range." in dashboard_js
     assert "pager" in dashboard
     assert "pagerEl.hidden = !shouldShowPager" in dashboard_js
     assert "updatePager(page, 'threads')" in dashboard_js
@@ -1306,6 +1306,7 @@ def test_mcp_wrappers_smoke(tmp_path: Path, monkeypatch) -> None:
     allowance_path = tmp_path / "allowance.json"
     projects_path = tmp_path / "projects.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_CODEX_HOME", codex_home)
+    monkeypatch.setattr(mcp_server, "DEFAULT_CLAUDE_HOME", tmp_path / ".claude")
     monkeypatch.setattr(mcp_server, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(mcp_server, "DEFAULT_DASHBOARD_PATH", dashboard_path)
     monkeypatch.setattr(mcp_server, "DEFAULT_PRICING_PATH", pricing_path)
@@ -1403,7 +1404,7 @@ def test_mcp_wrappers_smoke(tmp_path: Path, monkeypatch) -> None:
     assert pricing_update["source_url"] == "https://example.test/pricing.md"
     assert allowance["allowance_path"] == str(allowance_path)
     assert allowance_path.exists()
-    assert "Codex Usage Tracker doctor" in doctor
+    assert "AI Usage Dashboard doctor" in doctor
     assert doctor_json["schema"] == "codex-usage-tracker-doctor-v1"
 
 
@@ -1430,7 +1431,7 @@ def test_pricing_annotation_and_doctor_pass(tmp_path: Path) -> None:
         json.dumps(
             {
                 "mcpServers": {
-                    "codex-usage-tracker": {
+                    "ai-usage-dashboard": {
                         "command": sys.executable,
                         "args": ["-m", "codex_usage_tracker.mcp_server"],
                         "env": {
@@ -1442,7 +1443,7 @@ def test_pricing_annotation_and_doctor_pass(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    plugin_link = tmp_path / "plugins" / "codex-usage-tracker"
+    plugin_link = tmp_path / "plugins" / "ai-usage-dashboard"
     plugin_link.parent.mkdir()
     (plugin_link / ".codex-plugin").mkdir(parents=True)
     (plugin_link / ".codex-plugin" / "plugin.json").write_text(
@@ -1455,7 +1456,7 @@ def test_pricing_annotation_and_doctor_pass(tmp_path: Path) -> None:
     )
     marketplace_path = tmp_path / "marketplace.json"
     marketplace_path.write_text(
-        json.dumps({"plugins": [{"name": "codex-usage-tracker"}]}),
+        json.dumps({"plugins": [{"name": "ai-usage-dashboard"}]}),
         encoding="utf-8",
     )
 

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from codex_usage_tracker import __version__
-from codex_usage_tracker.adapters.base import SOURCE_CHOICES, SOURCE_CODEX
+from codex_usage_tracker.adapters.base import SOURCE_ALL, SOURCE_CHOICES
 from codex_usage_tracker.allowance import (
     update_rate_card,
     write_allowance_from_text,
@@ -94,6 +94,8 @@ from codex_usage_tracker.store import (
 )
 from codex_usage_tracker.support import build_support_bundle
 
+PRIMARY_COMMAND_NAME = "ai-usage-dashboard"
+
 
 def main() -> int:
     try:
@@ -116,7 +118,7 @@ def _main() -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="codex-usage-tracker")
+    parser = argparse.ArgumentParser(prog=_display_program_name())
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
     parser.add_argument("--pricing", type=Path, default=DEFAULT_PRICING_PATH)
@@ -161,6 +163,14 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_project_parser(subparsers)
     _add_support_bundle_parser(subparsers)
     return parser
+
+
+def _display_program_name(argv0: str | None = None) -> str:
+    executable = Path(argv0 or sys.argv[0]).name
+    stem = executable.removesuffix(".exe")
+    if stem == PRIMARY_COMMAND_NAME:
+        return stem
+    return PRIMARY_COMMAND_NAME
 
 
 def _add_setup_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -466,7 +476,7 @@ def _add_source_refresh_args(
 ) -> None:
     if include_codex_home:
         parser.add_argument("--codex-home", type=Path, default=DEFAULT_CODEX_HOME)
-    parser.add_argument("--source", choices=SOURCE_CHOICES, default=SOURCE_CODEX)
+    parser.add_argument("--source", choices=SOURCE_CHOICES, default=SOURCE_ALL)
     parser.add_argument("--claude-home", type=Path, default=DEFAULT_CLAUDE_HOME)
 
 
@@ -665,7 +675,7 @@ def _print_json(payload: dict[str, Any]) -> None:
 
 
 def _run_setup(args: argparse.Namespace) -> int:
-    lines = ["Codex Usage Tracker setup summary", ""]
+    lines = ["AI Usage Dashboard setup summary", ""]
     codex_home_exists = args.codex_home.expanduser().exists()
     lines.append(
         f"Codex home: {args.codex_home.expanduser()} "
@@ -772,7 +782,7 @@ def _run_install_plugin(args: argparse.Namespace) -> int:
         _print_json(plugin_install_payload(result, schema="codex-usage-tracker-plugin-install-v1"))
         return 0
     replacement_note = " Replaced existing plugin path." if result.replaced_existing else ""
-    print(f"Installed Codex Usage Tracker plugin at {result.plugin_dir}.{replacement_note}")
+    print(f"Installed AI Usage Dashboard plugin at {result.plugin_dir}.{replacement_note}")
     print(f"MCP Python: {result.python_executable}")
     print(f"Updated marketplace: {result.marketplace_path}")
     print("Restart Codex to discover the plugin.")
@@ -789,7 +799,7 @@ def _run_upgrade_plugin(args: argparse.Namespace) -> int:
     if args.as_json:
         _print_json(plugin_install_payload(result, schema="codex-usage-tracker-plugin-upgrade-v1"))
         return 0
-    print(f"Upgraded Codex Usage Tracker plugin at {result.plugin_dir}.")
+    print(f"Upgraded AI Usage Dashboard plugin at {result.plugin_dir}.")
     print(f"MCP Python: {result.python_executable}")
     print(f"Updated marketplace: {result.marketplace_path}")
     print("Restart Codex to discover the refreshed plugin.")
