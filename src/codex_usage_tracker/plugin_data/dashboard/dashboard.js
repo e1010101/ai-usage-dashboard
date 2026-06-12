@@ -101,24 +101,20 @@
     const pagerEl = document.getElementById('pager');
     const toTopEl = document.getElementById('toTop');
     const totalTokensCardEl = document.getElementById('totalTokensCard');
-    const totalTokensLabelEl = document.getElementById('totalTokensLabel');
     const totalTokensEl = document.getElementById('totalTokens');
-    const cachedTokensCardEl = document.getElementById('cachedTokensCard');
-    const cachedTokensLabelEl = document.getElementById('cachedTokensLabel');
-    const cachedTokensEl = document.getElementById('cachedTokens');
-    const uncachedTokensCardEl = document.getElementById('uncachedTokensCard');
-    const uncachedTokensLabelEl = document.getElementById('uncachedTokensLabel');
-    const uncachedTokensEl = document.getElementById('uncachedTokens');
+    const inputTokensCardEl = document.getElementById('inputTokensCard');
+    const inputTokensEl = document.getElementById('inputTokens');
+    const cacheTokensCardEl = document.getElementById('cacheTokensCard');
+    const cacheTokensEl = document.getElementById('cacheTokens');
+    const outputTokensCardEl = document.getElementById('outputTokensCard');
+    const outputTokensEl = document.getElementById('outputTokens');
     const reasoningTokensCardEl = document.getElementById('reasoningTokensCard');
-    const reasoningTokensLabelEl = document.getElementById('reasoningTokensLabel');
     const reasoningTokensEl = document.getElementById('reasoningTokens');
     const estimatedCostEl = document.getElementById('estimatedCost');
-    const usageCreditsCardEl = document.getElementById('usageCreditsCard');
-    const usageCreditsLabelEl = document.getElementById('usageCreditsLabel');
-    const usageCreditsEl = document.getElementById('usageCredits');
-    const allowanceCardEl = document.getElementById('allowanceCard');
-    const allowanceImpactLabelEl = document.getElementById('allowanceImpactLabel');
-    const allowanceImpactEl = document.getElementById('allowanceImpact');
+    const usageLimitsCardEl = document.getElementById('usageLimitsCard');
+    const usageLimitsEl = document.getElementById('usageLimits');
+    const providerDetailsEl = document.getElementById('providerDetails');
+    const providerDetailGroupsEl = document.getElementById('providerDetailGroups');
     let rowByRecordId = new Map();
     let threadAttachmentByRecordId = new Map();
     const expandedThreads = new Set();
@@ -141,54 +137,24 @@
       overview: {
         summary: 'Overview combines all loaded providers so you can compare overall usage before drilling into a provider-specific tab.',
         insightsCaption: 'Ranked across all visible providers. Codex credits and remaining usage apply only to Codex/OpenAI rows.',
-        totalLabel: 'Total Tokens',
-        totalTitle: 'Provider-reported total tokens, including cache reads when the source reports them.',
-        cachedLabel: 'Cached Input',
-        cachedTitle: 'Cached or reused input tokens reported by the visible sources.',
-        uncachedLabel: 'Uncached Input',
-        uncachedTitle: 'Fresh input tokens reported by the visible sources.',
-        reasoningLabel: 'Reasoning Output',
-        reasoningTitle: 'Reasoning or thinking tokens when the source reports them.',
-        creditsLabel: 'Codex Credits',
-        creditsUnavailable: 'Not applicable to non-Codex usage.',
-        remainingLabel: 'Codex Remaining',
-        remainingUnavailable: 'Codex remaining applies only to Codex/OpenAI usage.',
       },
       openai: {
         summary: 'Codex view keeps OpenAI/Codex rows in scope, including live remaining windows and Codex credit mapping when available.',
         insightsCaption: 'Ranked within visible Codex usage, with credit and remaining-usage signals included when they are available.',
-        totalLabel: 'Total Tokens',
-        totalTitle: 'Codex-reported total tokens for the visible rows.',
-        cachedLabel: 'Cached Input',
-        cachedTitle: 'Cached input tokens reported by Codex.',
-        uncachedLabel: 'Uncached Input',
-        uncachedTitle: 'Fresh input tokens reported by Codex.',
-        reasoningLabel: 'Reasoning Output',
-        reasoningTitle: 'Reasoning output tokens reported by Codex.',
-        creditsLabel: 'Codex Credits',
-        creditsUnavailable: 'Codex credit rates are missing for the visible rows.',
-        remainingLabel: 'Codex Remaining',
-        remainingUnavailable: 'Add ~/.codex-usage-tracker/allowance.json to show 5h and weekly remaining usage.',
       },
       anthropic: {
         summary: 'Claude Code totals include direct input, cache writes, cache reads, and output. Large totals here are often mostly cache-read reuse.',
         insightsCaption: 'Ranked within visible Claude Code usage. Total tokens include cache reads and cache writes reported by Claude Code.',
-        totalLabel: 'Total Tokens',
-        totalTitle: 'Claude Code total tokens include direct input, cache writes, cache reads, and output.',
-        cachedLabel: 'Cache Read',
-        cachedTitle: 'Anthropic cache_read_input_tokens reported by Claude Code.',
-        uncachedLabel: 'Direct Input',
-        uncachedTitle: 'Anthropic input_tokens before cache read and cache creation buckets.',
-        reasoningLabel: 'Reasoning Output',
-        reasoningTitle: 'Thinking tokens when Claude Code reports them.',
-        creditsLabel: 'Output Tokens',
-        creditsTitle: 'Output tokens generated by Claude Code for the visible rows, including reasoning output.',
-        remainingLabel: 'Claude Remaining',
-        remainingUnavailable: 'Capture Claude Code statusLine rate_limits to show 5h and 7d remaining usage.',
       },
     };
+    const limitWindowDisplayLabels = { five_hour: '5h', weekly: 'weekly' };
+    const limitSetupHints = {
+      openai: 'Add ~/.codex-usage-tracker/allowance.json to show 5h and weekly remaining usage.',
+      anthropic: 'Capture Claude Code statusLine rate_limits to show 5h and 7d remaining usage.',
+    };
+    const limitStaleAfterMs = 24 * 60 * 60 * 1000;
     let activeView = ['calls', 'threads', 'insights'].includes(initialState.view) ? initialState.view : 'insights';
-    let sortKey = optionValueExists(sortEl, initialState.sort) ? initialState.sort : sortEl.value || 'attention';
+    let sortKey = optionValueExists(sortEl, initialState.sort) ? initialState.sort : sortEl.value || 'time';
     let sortDirection = ['asc', 'desc'].includes(initialState.direction) ? initialState.direction : defaultSortDirection(sortKey);
     let activePreset = '';
     let selectedRecordId = initialState.record || '';
@@ -351,13 +317,6 @@
     function providerLimitSnapshot(scope) {
       return (providerLimitSnapshots && providerLimitSnapshots[scope]) || {};
     }
-    function currentProviderLimits(rows = []) {
-      const scope = inferredProviderScope(rows);
-      if (scope && providerLimitSnapshots && providerLimitSnapshots[scope]) {
-        return providerLimitSnapshots[scope];
-      }
-      return {};
-    }
     function limitWindowText(windows, totalCredits, mode = 'impact') {
       if (!windows.length) return '';
       const labels = windows.map(window => {
@@ -393,21 +352,102 @@
     function allowanceWindowText(totalCredits, mode = 'impact') {
       return limitWindowText(allowanceWindows, totalCredits, mode);
     }
-    function providerLimitWindowText(rows = [], mode = 'remaining-card') {
-      return limitWindowText(snapshotWindows(currentProviderLimits(rows)), 0, mode);
+    function limitWindowDisplayLabel(window) {
+      return limitWindowDisplayLabels[window.key] || short(window.label || window.key, 'window');
     }
-    function allowanceImpactText(totalCredits, rows = []) {
-      if (isNonCodexProviderScope(rows)) {
-        const providerRemaining = providerLimitWindowText(rows, 'remaining-card') || providerLimitWindowText(rows, 'remaining');
-        const limits = currentProviderLimits(rows);
-        if (providerRemaining) return providerRemaining;
-        if (limits.error) return 'Limit snapshot error';
-        return limits.configured ? 'Limits configured' : 'No snapshot';
+    function limitWindowDisplayValue(window) {
+      const remainingPercent = window.remaining_percent === null || window.remaining_percent === undefined ? null : Number(window.remaining_percent);
+      if (remainingPercent !== null && Number.isFinite(remainingPercent)) return pct(remainingPercent);
+      const remainingCredits = window.remaining_credits === null || window.remaining_credits === undefined ? null : Number(window.remaining_credits);
+      if (remainingCredits !== null && Number.isFinite(remainingCredits)) return `${credits(remainingCredits)} cr`;
+      return 'configured';
+    }
+    function providerShortName(provider) {
+      if (provider === 'openai') return 'Codex';
+      if (provider === 'anthropic') return 'Claude';
+      return providerTabLabel(provider);
+    }
+    function buildUsageLimits(rows) {
+      if (!rows.length) return { state: 'no-data', lines: [] };
+      const providers = [...new Set(rows.map(row => row.source_provider).filter(Boolean))].sort();
+      const lines = providers.map(provider => {
+        const snapshot = providerLimitSnapshot(provider);
+        const windows = snapshotWindows(snapshot);
+        return {
+          provider,
+          label: providerShortName(provider),
+          configured: Boolean(snapshot.configured) && windows.length > 0,
+          windows,
+          source: snapshot.source || {},
+          error: snapshot.error || '',
+        };
+      });
+      if (!lines.some(line => line.configured)) return { state: 'no-snapshots', lines };
+      return { state: 'lines', lines };
+    }
+    function usageLimitsCardText(limits) {
+      if (limits.state === 'no-data') return 'No data in range';
+      if (limits.state === 'no-snapshots') return 'No snapshots';
+      const configured = limits.lines.filter(line => line.configured);
+      if (configured.length === 1 && limits.lines.length === 1) {
+        return configured[0].windows
+          .map(window => `${limitWindowDisplayLabel(window)} ${limitWindowDisplayValue(window)}`)
+          .join('\n');
       }
-      const windowImpact = allowanceWindowText(totalCredits, 'remaining-card') || allowanceWindowText(totalCredits, 'impact');
-      if (windowImpact) return windowImpact;
-      if (allowanceError) return 'Allowance config error';
-      return allowanceConfigured ? 'Allowance configured' : 'Set limits';
+      return limits.lines
+        .map(line => {
+          if (!line.configured) return `${line.label} no snapshot`;
+          const windows = line.windows
+            .map(window => `${limitWindowDisplayLabel(window)} ${limitWindowDisplayValue(window)}`)
+            .join(' · ');
+          return `${line.label} ${windows}`;
+        })
+        .join('\n');
+    }
+    function limitSnapshotStaleNote(source) {
+      const captured = source && source.captured_at ? Date.parse(source.captured_at) : NaN;
+      if (!Number.isFinite(captured)) return '';
+      if (Date.now() - captured <= limitStaleAfterMs) return '';
+      return ` (captured ${formatTimestamp(source.captured_at, source.captured_at)} — may be stale)`;
+    }
+    function usageLimitsCardTitle(limits) {
+      if (limits.state === 'no-data') return 'No calls in the current filter range.';
+      if (limits.state === 'no-snapshots' && !limits.lines.length) {
+        return 'No provider limit snapshots are available for the visible rows.';
+      }
+      const parts = limits.lines.map(line => {
+        if (!line.configured) {
+          const hint = limitSetupHints[line.provider] || 'No limit snapshot available.';
+          return line.error ? `${line.label}: limit snapshot error: ${line.error}` : `${line.label}: ${hint}`;
+        }
+        const resets = line.windows
+          .filter(window => window.reset_at)
+          .map(window => `${limitWindowDisplayLabel(window)} resets ${formatTimestamp(window.reset_at, window.reset_at)}`)
+          .join(', ');
+        const sourceName = line.source.name ? `Source: ${line.source.name}.` : '';
+        return [`${line.label}: remaining capacity.`, resets ? `${resets}.` : '', sourceName, limitSnapshotStaleNote(line.source)]
+          .filter(Boolean)
+          .join(' ');
+      });
+      return parts.join(' ');
+    }
+    function buildUniversalSummary(rows) {
+      const sum = field => rows.reduce((total, row) => total + Number(row[field] || 0), 0);
+      const cacheReadTokens = sum('cached_input_tokens');
+      const cacheCreationTokens = sum('cache_creation_input_tokens');
+      return {
+        visibleCalls: rows.length,
+        totalTokens: sum('total_tokens'),
+        inputTokens: sum('uncached_input_tokens'),
+        cacheTokens: cacheReadTokens + cacheCreationTokens,
+        cacheReadTokens,
+        cacheCreationTokens,
+        outputTokens: sum('output_tokens'),
+        reasoningTokens: sum('reasoning_output_tokens'),
+        estimatedCost: sum('estimated_cost_usd'),
+        usageCredits: sumUsageCredits(rows),
+        usageLimits: buildUsageLimits(rows),
+      };
     }
     function rowAllowanceImpact(row) {
       if (row.usage_credit_confidence === 'not_applicable') return 'Codex credit rates do not apply to this source.';
@@ -415,31 +455,6 @@
       if (value === null) return 'No mapped Codex credit rate';
       const impact = allowanceWindowText(value, 'impact');
       return impact || `${credits(value)} credits counted toward Codex usage limits`;
-    }
-    function updateAllowanceSourceLine() {
-      const sourceEl = document.getElementById('allowanceSource');
-      const creditSourceName = allowanceSource.name || 'Codex credit rates';
-      const windowSourceName = allowanceWindowSource.name || 'Manual allowance windows';
-      const claudeLimits = providerLimitSnapshot('anthropic');
-      const claudeWindows = snapshotWindows(claudeLimits);
-      const claudeSource = claudeLimits.source || {};
-      const claudeSourceName = claudeSource.name || 'Local Claude Code status-line snapshot';
-      const coverage = creditCoverageRatio(data);
-      sourceEl.textContent = 'Credits';
-      sourceEl.dataset.state = coverage > 0 ? 'ready' : 'missing';
-      sourceEl.title = [
-        allowanceSource.url ? `Source: ${allowanceSource.url}` : '',
-        allowanceSource.fetched_at ? `rate card snapshot ${allowanceSource.fetched_at}` : '',
-        `Credit rates: ${creditSourceName}.`,
-        `Credit coverage ${pct(coverage)} of loaded tokens.`,
-        allowanceWindows.length ? `Allowance windows: ${allowanceWindows.map(window => short(window.label || window.key)).join(', ')}. Remaining window source: ${windowSourceName}.` : 'Run ai-usage-dashboard init-allowance to add remaining usage windows.',
-        allowanceWindows.some(window => window.reset_at) ? `Resets: ${allowanceWindows.map(window => window.reset_at ? `${short(window.label || window.key)} ${formatTimestamp(window.reset_at, window.reset_at)}` : '').filter(Boolean).join('; ')}` : '',
-        claudeWindows.length ? `Claude limits: ${claudeWindows.map(window => short(window.label || window.key)).join(', ')}. Source: ${claudeSourceName}.` : '',
-        claudeWindows.some(window => window.reset_at) ? `Claude resets: ${claudeWindows.map(window => window.reset_at ? `${short(window.label || window.key)} ${formatTimestamp(window.reset_at, window.reset_at)}` : '').filter(Boolean).join('; ')}` : '',
-        allowanceError ? `Allowance config error: ${allowanceError}` : '',
-        claudeLimits.error ? `Claude limit snapshot error: ${claudeLimits.error}` : '',
-        rateCardError ? `Rate-card error: ${rateCardError}` : '',
-      ].filter(Boolean).join(' ');
     }
     function providerTabLabel(provider) {
       if (provider === 'openai') return data.some(row => row.source_provider === 'openai' && row.source_app === 'codex') ? 'Codex' : 'OpenAI';
@@ -464,13 +479,6 @@
       if (scope === 'anthropic') return { scope, ...providerProfiles.anthropic };
       return { scope: '', ...providerProfiles.overview };
     }
-    function hasApplicableCodexCredits(rows) {
-      return rows.some(row => row.usage_credit_confidence !== 'not_applicable');
-    }
-    function isNonCodexProviderScope(rows) {
-      const scope = inferredProviderScope(rows);
-      return Boolean(scope && scope !== 'openai' && !hasApplicableCodexCredits(rows));
-    }
     function renderProviderTabs(rows = []) {
       const tabs = [{ key: '', label: 'Overview' }, ...availableProviders().map(provider => ({ key: provider, label: providerTabLabel(provider) }))];
       const selected = inferredProviderScope(rows);
@@ -494,48 +502,100 @@
         });
       });
     }
-    function allowanceCardTitle(totalCredits, rows) {
-      if (isNonCodexProviderScope(rows)) {
-        const profile = currentProviderProfile(rows);
-        const limits = currentProviderLimits(rows);
-        const providerRemaining = providerLimitWindowText(rows, 'remaining');
-        if (providerRemaining) return providerRemaining;
-        if (limits.error) return `Could not read ${profile.remainingLabel}: ${limits.error}`;
-        return profile.remainingUnavailable;
-      }
-      return allowanceWindowText(totalCredits, 'remaining') || 'Add ~/.codex-usage-tracker/allowance.json to show 5h and weekly remaining usage.';
+    function updateSummaryCards(rows, summary) {
+      totalTokensEl.textContent = number.format(summary.totalTokens);
+      totalTokensCardEl.title = 'Provider-reported total tokens; depending on the source this includes cache reads and cache writes.';
+      inputTokensEl.textContent = number.format(summary.inputTokens);
+      inputTokensCardEl.title = 'Fresh input tokens that were not served from cache — the best cross-provider approximation. Raw provider input buckets stay in Call Details.';
+      cacheTokensEl.textContent = number.format(summary.cacheTokens);
+      cacheTokensCardEl.title = summary.cacheCreationTokens > 0
+        ? `Cache activity for the visible rows. Cache read: ${number.format(summary.cacheReadTokens)}. Cache creation: ${number.format(summary.cacheCreationTokens)}.`
+        : `Cache activity for the visible rows. Cache read: ${number.format(summary.cacheReadTokens)}.`;
+      outputTokensEl.textContent = number.format(summary.outputTokens);
+      outputTokensCardEl.title = 'Output tokens generated for the visible rows.';
+      reasoningTokensEl.textContent = number.format(summary.reasoningTokens);
+      reasoningTokensCardEl.title = summary.reasoningTokens > 0
+        ? 'Reasoning or thinking output tokens reported by the visible sources.'
+        : 'The visible providers did not report a stable reasoning-token bucket for these rows.';
+      estimatedCostEl.textContent = pricingConfigured ? money(summary.estimatedCost) : 'Not configured';
+      usageLimitsEl.textContent = usageLimitsCardText(summary.usageLimits);
+      usageLimitsCardEl.title = usageLimitsCardTitle(summary.usageLimits);
+      if (insightsCaptionEl) insightsCaptionEl.textContent = currentProviderProfile(rows).insightsCaption;
     }
-    function updateSummaryCards(rows, totals) {
-      const profile = currentProviderProfile(rows);
-      totalTokensLabelEl.textContent = profile.totalLabel;
-      totalTokensCardEl.title = profile.totalTitle;
-      cachedTokensLabelEl.textContent = profile.cachedLabel;
-      cachedTokensCardEl.title = profile.cachedTitle;
-      uncachedTokensLabelEl.textContent = profile.uncachedLabel;
-      uncachedTokensCardEl.title = profile.uncachedTitle;
-      reasoningTokensLabelEl.textContent = profile.reasoningLabel;
-      reasoningTokensCardEl.title = profile.reasoningTitle;
-      usageCreditsLabelEl.textContent = profile.creditsLabel;
-      allowanceImpactLabelEl.textContent = profile.remainingLabel;
-      totalTokensEl.textContent = number.format(totals.totalTokens);
-      cachedTokensEl.textContent = number.format(totals.cachedInputTokens);
-      uncachedTokensEl.textContent = number.format(totals.uncachedInputTokens);
-      reasoningTokensEl.textContent = number.format(totals.reasoningOutputTokens);
-      estimatedCostEl.textContent = pricingConfigured ? money(totals.estimatedCost) : 'Not configured';
-      const nonCodexScope = isNonCodexProviderScope(rows);
-      if (profile.scope === 'anthropic') {
-        usageCreditsEl.textContent = number.format(totals.outputTokens);
-        usageCreditsCardEl.title = profile.creditsTitle;
-      } else {
-        usageCreditsEl.textContent = nonCodexScope ? 'Not applicable' : credits(totals.usageCredits);
-        usageCreditsCardEl.title = nonCodexScope
-          ? profile.creditsUnavailable
-          : `${pct(creditCoverageRatio(rows))} of visible tokens map to Codex credit rates.`;
+    function buildProviderDetails(rows, summary) {
+      const groups = [];
+      const visibleProviders = new Set(rows.map(row => row.source_provider).filter(Boolean));
+      if (visibleProviders.has('openai')) {
+        const items = [];
+        items.push(['Codex credits', `${credits(summary.usageCredits)} credits across visible rows`]);
+        items.push(['Credit coverage', `${pct(creditCoverageRatio(rows))} of visible tokens map to Codex credit rates`]);
+        if (allowanceSource.name) {
+          const fetched = allowanceSource.fetched_at ? ` (snapshot ${formatTimestamp(allowanceSource.fetched_at, allowanceSource.fetched_at)})` : '';
+          items.push(['Credit rates', `${allowanceSource.name}${fetched}`]);
+        }
+        const impact = allowanceWindowText(summary.usageCredits, 'impact');
+        if (impact) items.push(['Allowance impact', impact]);
+        const resets = allowanceWindows
+          .filter(window => window.reset_at)
+          .map(window => `${limitWindowDisplayLabel(window)} ${formatTimestamp(window.reset_at, window.reset_at)}`)
+          .join(' · ');
+        if (resets) items.push(['Allowance resets', resets]);
+        if (allowanceError) items.push(['Allowance error', allowanceError]);
+        if (rateCardError) items.push(['Rate-card error', rateCardError]);
+        const notApplicable = rows.filter(row => row.usage_credit_confidence === 'not_applicable').length;
+        if (notApplicable && visibleProviders.size > 1) {
+          items.push(['Not applicable', `${number.format(notApplicable)} visible rows are outside Codex credit rates`]);
+        }
+        groups.push({ provider: 'openai', label: providerTabLabel('openai'), items });
       }
-      allowanceImpactEl.textContent = allowanceImpactText(totals.usageCredits, rows);
-      allowanceImpactEl.title = allowanceCardTitle(totals.usageCredits, rows);
-      allowanceCardEl.title = allowanceImpactEl.title;
-      if (insightsCaptionEl) insightsCaptionEl.textContent = profile.insightsCaption;
+      if (visibleProviders.has('anthropic')) {
+        const items = [];
+        const snapshot = providerLimitSnapshot('anthropic');
+        const windows = snapshotWindows(snapshot);
+        const source = snapshot.source || {};
+        if (windows.length) {
+          if (source.name) {
+            const captured = source.captured_at ? ` (captured ${formatTimestamp(source.captured_at, source.captured_at)})` : '';
+            items.push(['Limit snapshot', `${source.name}${captured}`]);
+          }
+          const resets = windows
+            .filter(window => window.reset_at)
+            .map(window => `${limitWindowDisplayLabel(window)} ${formatTimestamp(window.reset_at, window.reset_at)}`)
+            .join(' · ');
+          if (resets) items.push(['Limit resets', resets]);
+        } else {
+          items.push(['Limit snapshot', limitSetupHints.anthropic]);
+        }
+        if (snapshot.error) items.push(['Snapshot error', snapshot.error]);
+        groups.push({ provider: 'anthropic', label: providerTabLabel('anthropic'), items });
+      }
+      const globalItems = [];
+      if (!pricingConfigured) {
+        globalItems.push(['Pricing', 'Not configured. Run ai-usage-dashboard update-pricing to estimate costs.']);
+      } else if (pricingSnapshotWarning) {
+        globalItems.push(['Pricing', pricingSnapshotWarning]);
+      }
+      if (globalItems.length) {
+        groups.push({ provider: '', label: 'Pricing', items: globalItems });
+      }
+      return groups.filter(group => group.items.length);
+    }
+    function renderProviderDetails(rows, summary) {
+      const groups = buildProviderDetails(rows, summary);
+      if (!groups.length) {
+        providerDetailsEl.hidden = true;
+        providerDetailGroupsEl.innerHTML = '';
+        return;
+      }
+      providerDetailsEl.hidden = false;
+      providerDetailGroupsEl.innerHTML = groups.map(group => `
+        <div class="provider-detail-group" data-provider="${escapeHtml(group.provider)}">
+          <h3>${escapeHtml(group.label)}</h3>
+          <dl class="provider-detail-kv">
+            ${group.items.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}
+          </dl>
+        </div>
+      `).join('');
     }
     function rebuildSelectOptions(select, values, label) {
       const previous = select.value;
@@ -931,7 +991,7 @@
     function clearPreset() {
       activePreset = '';
       pricingStatusEl.value = '';
-      sortKey = 'attention';
+      sortKey = 'time';
       sortDirection = defaultSortDirection(sortKey);
       sortEl.value = sortKey;
       currentPage = 1;
@@ -1439,24 +1499,11 @@
       cancelCardCountUps();
       rowsEl.textContent = '';
       updateSortControls();
-      const totalTokens = rows.reduce((sum, row) => sum + Number(row.total_tokens || 0), 0);
-      const cachedInputTokens = rows.reduce((sum, row) => sum + Number(row.cached_input_tokens || 0), 0);
-      const uncachedInputTokens = rows.reduce((sum, row) => sum + Number(row.uncached_input_tokens || 0), 0);
-      const reasoningOutputTokens = rows.reduce((sum, row) => sum + Number(row.reasoning_output_tokens || 0), 0);
-      const estimatedCost = rows.reduce((sum, row) => sum + Number(row.estimated_cost_usd || 0), 0);
-      const outputTokens = rows.reduce((sum, row) => sum + Number(row.output_tokens || 0), 0);
-      const usageCredits = sumUsageCredits(rows);
-      document.getElementById('visibleCalls').textContent = number.format(rows.length);
+      const summary = buildUniversalSummary(rows);
+      document.getElementById('visibleCalls').textContent = number.format(summary.visibleCalls);
       renderProviderTabs(rows);
-      updateSummaryCards(rows, {
-        totalTokens,
-        cachedInputTokens,
-        uncachedInputTokens,
-        reasoningOutputTokens,
-        estimatedCost,
-        outputTokens,
-        usageCredits,
-      });
+      updateSummaryCards(rows, summary);
+      renderProviderDetails(rows, summary);
       insightsViewEl.setAttribute('aria-pressed', activeView === 'insights' ? 'true' : 'false');
       callsViewEl.setAttribute('aria-pressed', activeView === 'calls' ? 'true' : 'false');
       threadsViewEl.setAttribute('aria-pressed', activeView === 'threads' ? 'true' : 'false');
@@ -2025,7 +2072,7 @@
     function updateToTopVisibility() {
       toTopEl.dataset.visible = window.scrollY > 320 ? 'true' : 'false';
     }
-    const COUNT_UP_IDS = ['visibleCalls', 'totalTokens', 'cachedTokens', 'uncachedTokens', 'reasoningTokens', 'estimatedCost', 'usageCredits'];
+    const COUNT_UP_IDS = ['visibleCalls', 'totalTokens', 'inputTokens', 'cacheTokens', 'outputTokens', 'reasoningTokens', 'estimatedCost'];
     const countUpHandles = new Map();
     const reducedMotionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
     function parseCardNumber(text) {
@@ -2104,7 +2151,6 @@
       rebuildDashboardIndexes();
       rebuildFilterOptions();
       updatePricingSourceLine();
-      updateAllowanceSourceLine();
       updatePrivacyModeLine();
       updateParserDiagnosticsLine();
       updateHistoryScopeControl();
@@ -2279,7 +2325,6 @@
     rebuildFilterOptions();
     applyInitialState();
     updatePricingSourceLine();
-    updateAllowanceSourceLine();
     updatePrivacyModeLine();
     updateParserDiagnosticsLine();
     updateHistoryScopeControl();

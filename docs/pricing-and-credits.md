@@ -2,10 +2,9 @@
 
 AI Usage Dashboard has three related but different concepts:
 
-- `Estimated Cost`: optional USD estimates from a local pricing file.
-- `Codex Credits`: calculated usage credits from aggregate token counters and Codex credit rates.
-- `Codex Remaining`: local 5-hour and weekly allowance snapshots from Codex `rate_limits`, with optional manual overrides.
-- `Claude Remaining`: local 5-hour and 7-day Claude Code status-line `rate_limits` snapshots, when captured.
+- `Estimated Cost`: optional USD estimates from a local pricing file, shown as a universal top card.
+- Codex credits: calculated usage credits from aggregate token counters and Codex credit rates, shown in the `Provider Details` strip and detail panels.
+- Usage limits: local remaining-capacity snapshots shown in the universal `Usage Limits` top card — 5-hour and weekly windows from Codex `rate_limits` (with optional manual overrides) and 5-hour and 7-day windows from captured Claude Code status-line snapshots.
 
 ## Cost Estimates
 
@@ -40,7 +39,7 @@ Edit `~/.codex-usage-tracker/pricing.json` with USD-per-million-token rates for 
 
 ## Codex Credits
 
-`Codex Credits` is a calculated usage number, not a dashboard-only unit. The tracker uses Codex's logged aggregate token counters and the bundled OpenAI Codex rate-card snapshot to estimate credits consumed by local Codex calls.
+Codex credits are a calculated usage number, not a dashboard-only unit. The tracker uses Codex's logged aggregate token counters and the bundled OpenAI Codex rate-card snapshot to estimate credits consumed by local Codex calls. The dashboard surfaces them in the `Provider Details` strip below the top cards and in Call/Thread detail panels.
 
 The estimate uses:
 
@@ -59,9 +58,9 @@ ai-usage-dashboard update-rate-card
 
 The local snapshot is written to `~/.codex-usage-tracker/rate-card.json`. Each bundled rate and alias includes source URL, fetched date, tier, confidence, and alias rationale where applicable. Use `--source-file` only when you have a reviewed replacement JSON snapshot you want the tracker to validate and use.
 
-## Codex Remaining
+## Codex Usage Limits
 
-`Codex Remaining` is different from `Codex Credits`. For Codex rows, the dashboard can read local Codex JSONL `payload.rate_limits` metadata from token-count events and convert the latest account-level snapshot into 5-hour and weekly remaining windows.
+Remaining Codex capacity is different from Codex credits. For Codex rows, the dashboard can read local Codex JSONL `payload.rate_limits` metadata from token-count events and convert the latest account-level snapshot into 5-hour and weekly remaining windows, shown as the Codex line of the `Usage Limits` card.
 
 This is local-only. The tracker does not call a remote account API, scrape a browser session, or infer your logged-in ChatGPT plan. A plan name such as Free, Plus, Pro, Business, or Enterprise can provide context, but it is not enough to know the current remaining allowance. Local Codex logs may also omit usage from other ChatGPT agentic surfaces that share the same allowance.
 
@@ -84,9 +83,9 @@ Configure the usage component:
 4. Add `remaining_credits` and `total_credits` only if your plan or workspace exposes exact credit numbers.
 5. Leave fields as `null` when you do not have a trustworthy value.
 
-## Claude Remaining
+## Claude Usage Limits
 
-Claude Code can provide `rate_limits` to custom status-line commands. The tracker can capture that local status-line JSON into a sanitized snapshot for the Claude Code dashboard tab:
+Claude Code can provide `rate_limits` to custom status-line commands. The tracker can capture that local status-line JSON into a sanitized snapshot for the Claude line of the `Usage Limits` card:
 
 ```bash
 ai-usage-dashboard install-claude-limits-statusline
@@ -98,8 +97,8 @@ If Claude Code does not include `rate_limits` yet, the wrapper exits successfull
 
 ## Accuracy Notes
 
-- Dynamic Codex Remaining applies to local Codex `rate_limits` snapshots and optional manual overrides.
-- Claude Remaining applies only when a local Claude Code status-line snapshot has been captured. Use `install-claude-limits-statusline` once to configure automatic capture from Claude Code.
+- The Codex line of `Usage Limits` applies to local Codex `rate_limits` snapshots and optional manual overrides.
+- The Claude line of `Usage Limits` appears only when a local Claude Code status-line snapshot has been captured. Use `install-claude-limits-statusline` once to configure automatic capture from Claude Code.
 - The dashboard does not infer live remaining allowance from the logged-in account plan or contact a remote usage API.
 - Pricing can change after a report is generated. Use `pin-pricing` when you need reproducible historical cost estimates.
 - Rows with direct model/rate-card matches are more trustworthy than inferred aliases or local overrides.

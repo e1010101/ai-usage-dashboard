@@ -27,9 +27,9 @@ Those fields are not written to SQLite, CSV exports, generated dashboard HTML, o
 
 Claude Code support follows the same aggregate-only rule. The indexer reads local JSONL files under `~/.claude/projects`, extracts usage counters and metadata-like identifiers, and does not persist prompts, assistant text, or tool output.
 
-Codex Usage Remaining support reads only local Codex JSONL `payload.rate_limits` metadata on token-count events. It uses the latest account-level snapshot to populate 5-hour and weekly remaining windows in dashboard payloads. It does not read prompts, assistant text, tool output, or raw message content, and it does not write these dynamic windows to SQLite by default.
+Codex usage-limit support reads only local Codex JSONL `payload.rate_limits` metadata on token-count events. It uses the latest account-level snapshot to populate 5-hour and weekly remaining windows in dashboard payloads. It does not read prompts, assistant text, tool output, or raw message content, and it does not write these dynamic windows to SQLite by default.
 
-Claude Remaining support reads a sanitized local snapshot written by the Claude Code status-line wrapper installed by `ai-usage-dashboard install-claude-limits-statusline`. The snapshot stores only provider identity, remaining percentages, reset timestamps, and source metadata. It does not persist the full status-line JSON, transcript path, prompts, assistant messages, or tool output.
+Claude usage-limit support reads a sanitized local snapshot written by the Claude Code status-line wrapper installed by `ai-usage-dashboard install-claude-limits-statusline`. The snapshot stores only provider identity, remaining percentages, reset timestamps, and source metadata. It does not persist the full status-line JSON, transcript path, prompts, assistant messages, or tool output.
 
 ## On-Demand Context
 

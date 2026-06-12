@@ -32,7 +32,6 @@
         <span class="disclaimer-chip" title="AI Usage Dashboard is independent and is not made by, affiliated with, endorsed by, sponsored by, or supported by OpenAI. OpenAI and Codex are trademarks of OpenAI.">Unofficial project</span>
         <span id="liveStatus" class="live-status">Static</span>
         <span id="pricingSource" class="source-line"></span>
-        <span id="allowanceSource" class="source-line"></span>
         <span id="privacyMode" class="source-line"></span>
         <span id="parserDiagnostics" class="source-line" hidden></span>
       </div>
@@ -54,19 +53,23 @@
       <label class="filter-field">Time<select id="datePreset"><option value="all">All time</option><option value="today">Today</option><option value="this-week" selected>This week</option><option value="last-7-days">Last 7 days</option><option value="this-month">This month</option><option value="custom">Custom range</option></select></label>
       <label class="filter-field date-field date-field-custom" hidden>Start<input id="dateStart" type="date"></label>
       <label class="filter-field date-field date-field-custom" hidden>End<input id="dateEnd" type="date"></label>
-      <label class="filter-field">Sort<select id="sort"><option value="attention" selected>Needs attention</option><option value="time">Newest calls</option><option value="thread">Thread name</option><option value="source">Source</option><option value="model">Model</option><option value="effort">Reasoning</option><option value="total">Most tokens</option><option value="cost">Highest estimated cost</option><option value="usage">Highest Codex credits</option><option value="cache">Lowest cache ratio</option><option value="signals">Most signals</option><option value="context">Highest context use</option></select></label>
+      <label class="filter-field">Sort<select id="sort"><option value="time" selected>Newest calls</option><option value="attention">Needs attention</option><option value="thread">Thread name</option><option value="source">Source</option><option value="model">Model</option><option value="effort">Reasoning</option><option value="total">Most tokens</option><option value="cost">Highest estimated cost</option><option value="usage">Highest Codex credits</option><option value="cache">Lowest cache ratio</option><option value="signals">Most signals</option><option value="context">Highest context use</option></select></label>
       <div id="dateStatusRow" class="filter-status-row" hidden><span id="dateRangeStatus" class="filter-status" aria-live="polite"></span></div>
     </div>
     <div class="cards">
       <div class="card"><span>Visible Calls</span><strong id="visibleCalls">0</strong></div>
-      <div id="totalTokensCard" class="card"><span id="totalTokensLabel">Total Tokens</span><strong id="totalTokens">0</strong></div>
-      <div id="cachedTokensCard" class="card" data-anthropic-label="Cache Read"><span id="cachedTokensLabel">Cached Input</span><strong id="cachedTokens">0</strong></div>
-      <div id="uncachedTokensCard" class="card" data-anthropic-label="Direct Input"><span id="uncachedTokensLabel">Uncached Input</span><strong id="uncachedTokens">0</strong></div>
-      <div id="reasoningTokensCard" class="card"><span id="reasoningTokensLabel">Reasoning Output</span><strong id="reasoningTokens">0</strong></div>
+      <div id="totalTokensCard" class="card"><span>Total Tokens</span><strong id="totalTokens">0</strong></div>
+      <div id="inputTokensCard" class="card"><span>Input Tokens</span><strong id="inputTokens">0</strong></div>
+      <div id="cacheTokensCard" class="card"><span>Cache Tokens</span><strong id="cacheTokens">0</strong></div>
+      <div id="outputTokensCard" class="card"><span>Output Tokens</span><strong id="outputTokens">0</strong></div>
+      <div id="reasoningTokensCard" class="card"><span>Reasoning Tokens</span><strong id="reasoningTokens">0</strong></div>
       <div class="card"><span>Estimated Cost</span><strong id="estimatedCost">$0.00</strong></div>
-      <div id="usageCreditsCard" class="card"><span id="usageCreditsLabel">Codex Credits</span><strong id="usageCredits">0</strong></div>
-      <div id="allowanceCard" class="card"><span id="allowanceImpactLabel">Codex Remaining</span><strong id="allowanceImpact">Set limits</strong></div>
+      <div id="usageLimitsCard" class="card"><span>Usage Limits</span><strong id="usageLimits">No snapshots</strong></div>
     </div>
+    <section id="providerDetails" class="provider-details" aria-labelledby="providerDetailsTitle" hidden>
+      <h2 id="providerDetailsTitle" class="provider-details-title">Provider Details</h2>
+      <div id="providerDetailGroups" class="provider-detail-groups"></div>
+    </section>
     <section id="insightsPanel" class="insights-panel" aria-labelledby="insightsTitle">
       <div class="insights-layout">
         <div>
