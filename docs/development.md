@@ -3,13 +3,13 @@
 ## Local Setup
 
 ```bash
-git clone https://github.com/douglasmonsky/codex-usage-tracker.git
-cd codex-usage-tracker
+git clone https://github.com/e1010101/ai-usage-dashboard.git
+cd ai-usage-dashboard
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install ".[dev]"
-codex-usage-tracker install-plugin --python .venv/bin/python
+ai-usage-dashboard install-plugin --python .venv/bin/python
 ```
 
 ## Repo Layout
@@ -48,23 +48,23 @@ python scripts/check_release.py --dist
 Run these when touching related CLI surfaces:
 
 ```bash
-codex-usage-tracker update-pricing --output /tmp/codex-usage-pricing.json
-codex-usage-tracker update-rate-card --output /tmp/codex-usage-rate-card.json
-codex-usage-tracker doctor
-codex-usage-tracker doctor --suggest-repair
-codex-usage-tracker refresh --source all --json
-codex-usage-tracker refresh --source claude-code --claude-home /tmp/empty-claude-home --json
-codex-usage-tracker dashboard --output /tmp/codex-usage-dashboard.html
-codex-usage-tracker serve-dashboard --help
-codex-usage-tracker init-allowance --output /tmp/codex-usage-allowance.json
-codex-usage-tracker parse-allowance --output /tmp/codex-usage-allowance.json "5h 79% 6:50 PM Weekly 33% Jun 7"
-codex-usage-tracker init-thresholds --output /tmp/codex-usage-thresholds.json
-codex-usage-tracker init-projects --output /tmp/codex-usage-projects.json
-codex-usage-tracker support-bundle --output /tmp/codex-usage-support.json
-codex-usage-tracker pricing-coverage
-codex-usage-tracker summary --group-by source_app
-codex-usage-tracker summary --preset by-subagent-role
-codex-usage-tracker expensive --limit 5
+ai-usage-dashboard update-pricing --output /tmp/codex-usage-pricing.json
+ai-usage-dashboard update-rate-card --output /tmp/codex-usage-rate-card.json
+ai-usage-dashboard doctor
+ai-usage-dashboard doctor --suggest-repair
+ai-usage-dashboard refresh --source all --json
+ai-usage-dashboard refresh --source claude-code --claude-home /tmp/empty-claude-home --json
+ai-usage-dashboard dashboard --output /tmp/codex-usage-dashboard.html
+ai-usage-dashboard serve-dashboard --help
+ai-usage-dashboard init-allowance --output /tmp/codex-usage-allowance.json
+ai-usage-dashboard parse-allowance --output /tmp/codex-usage-allowance.json "5h 79% 6:50 PM Weekly 33% Jun 7"
+ai-usage-dashboard init-thresholds --output /tmp/codex-usage-thresholds.json
+ai-usage-dashboard init-projects --output /tmp/codex-usage-projects.json
+ai-usage-dashboard support-bundle --output /tmp/codex-usage-support.json
+ai-usage-dashboard pricing-coverage
+ai-usage-dashboard summary --group-by source_app
+ai-usage-dashboard summary --preset by-subagent-role
+ai-usage-dashboard expensive --limit 5
 ```
 
 ## Dashboard Screenshots
@@ -99,8 +99,8 @@ Then verify the local package install path:
 
 ```bash
 python -m pip install ".[dev]"
-codex-usage-tracker --version
-codex-usage-tracker install-plugin --plugin-dir /tmp/codex-usage-tracker-plugin-smoke --marketplace /tmp/codex-usage-marketplace-smoke.json --python .venv/bin/python --force
+ai-usage-dashboard --version
+ai-usage-dashboard install-plugin --plugin-dir /tmp/ai-usage-dashboard-plugin-smoke --marketplace /tmp/codex-usage-marketplace-smoke.json --python .venv/bin/python --force
 ```
 
 The release checker verifies version alignment, required public docs, packaged plugin assets, wheel contents, and obvious tracked secret patterns. It does not publish anything.

@@ -1,6 +1,6 @@
 # Architecture
 
-Codex Usage Tracker is a local sidecar app evolving toward AI Usage Tracker. It reads aggregate token counters from supported local coding-agent JSONL logs, stores only aggregate metrics in SQLite, and exposes those metrics through CLI commands, MCP tools, CSV export, and a static or localhost-served dashboard. The package, CLI, and Codex plugin names remain `codex-usage-tracker` for compatibility.
+AI Usage Dashboard is a local sidecar app evolving toward AI Usage Tracker. It reads aggregate token counters from supported local coding-agent JSONL logs, stores only aggregate metrics in SQLite, and exposes those metrics through CLI commands, MCP tools, CSV export, and a static or localhost-served dashboard. The CLI and Codex plugin startup name is `ai-usage-dashboard`; the Python package/distribution name remains `codex-usage-tracker` for compatibility.
 
 ## Boundaries
 
@@ -19,7 +19,7 @@ Codex Usage Tracker is a local sidecar app evolving toward AI Usage Tracker. It 
 - `scripts/benchmark_synthetic_history.py` owns generated large-history query timing for 10k, 100k, and 500k aggregate-row fixtures. It must stay synthetic-only and must not read real local source logs.
 - `skills/codex-usage-tracker/` is the source copy for the operational Codex skill. It should stay focused on setup, source refresh, dashboard, export, doctor, and direct MCP workflows.
 - `skills/codex-usage-api/` is the source copy for the conversational analyst skill. It should stay focused on aggregate-only API routing, source filters, interpretation, and limitations.
-- `src/codex_usage_tracker/plugin_data/skills/` contains the wheel-bundled copies installed by `codex-usage-tracker install-plugin`.
+- `src/codex_usage_tracker/plugin_data/skills/` contains the wheel-bundled copies installed by `ai-usage-dashboard install-plugin`.
 
 ## Extension Rules
 

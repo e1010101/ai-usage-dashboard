@@ -1,12 +1,12 @@
 {
-  "name": "codex-usage-tracker",
+  "name": "ai-usage-dashboard",
   "version": "0.2.0",
-  "description": "Unofficial local tracker for aggregate Codex token usage from local session logs.",
+  "description": "Unofficial local dashboard for aggregate AI coding-agent token usage.",
   "author": {
     "name": "Douglas Monsky"
   },
-  "homepage": "https://github.com/douglasmonsky/codex-usage-tracker",
-  "repository": "https://github.com/douglasmonsky/codex-usage-tracker",
+  "homepage": "https://github.com/e1010101/ai-usage-dashboard",
+  "repository": "https://github.com/e1010101/ai-usage-dashboard",
   "license": "MIT",
   "keywords": [
     "codex",
@@ -18,9 +18,9 @@
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Codex Usage Tracker",
-    "shortDescription": "Unofficial local aggregate token usage analytics for Codex",
-    "longDescription": "Unofficial independent project, not made by, affiliated with, endorsed by, sponsored by, or supported by OpenAI. Reads local Codex session logs, aggregates exact token usage counters, and generates summaries, CSV exports, and a hoverable dashboard with optional localhost-only raw context loading.",
+    "displayName": "AI Usage Dashboard",
+    "shortDescription": "Unofficial local aggregate token usage analytics for AI coding agents",
+    "longDescription": "Unofficial independent project, not made by, affiliated with, endorsed by, sponsored by, or supported by OpenAI. Reads supported local coding-agent logs, aggregates exact token usage counters, and generates summaries, CSV exports, and a hoverable dashboard with optional localhost-only raw context loading.",
     "developerName": "Douglas Monsky",
     "category": "Productivity",
     "capabilities": [
@@ -28,9 +28,9 @@
       "Read",
       "Write"
     ],
-    "websiteURL": "https://github.com/douglasmonsky/codex-usage-tracker",
-    "privacyPolicyURL": "https://github.com/douglasmonsky/codex-usage-tracker",
-    "termsOfServiceURL": "https://github.com/douglasmonsky/codex-usage-tracker",
+    "websiteURL": "https://github.com/e1010101/ai-usage-dashboard",
+    "privacyPolicyURL": "https://github.com/e1010101/ai-usage-dashboard",
+    "termsOfServiceURL": "https://github.com/e1010101/ai-usage-dashboard",
     "defaultPrompt": [
       "Open dashboard",
       "Heaviest thread?",

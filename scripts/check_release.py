@@ -155,8 +155,8 @@ def _check_docs() -> list[str]:
     failures: list[str] = []
     for required in [
         "pipx install",
-        "codex-usage-tracker install-plugin",
-        "codex-usage-tracker doctor",
+        "ai-usage-dashboard install-plugin",
+        "ai-usage-dashboard doctor",
         "Data Privacy",
         "not made by, affiliated with, endorsed by, sponsored by, or supported by OpenAI",
     ]:
@@ -182,10 +182,12 @@ def _check_packaging_metadata() -> list[str]:
     if "urls" not in project:
         failures.append("pyproject.toml should include project.urls")
     scripts = project.get("scripts", {})
-    if scripts.get("codex-usage-tracker") != "codex_usage_tracker.cli:main":
-        failures.append("pyproject.toml is missing the codex-usage-tracker console script")
+    if scripts.get("ai-usage-dashboard") != "codex_usage_tracker.cli:main":
+        failures.append("pyproject.toml is missing the ai-usage-dashboard console script")
+    if "codex-usage-tracker" in scripts:
+        failures.append("pyproject.toml should not expose the old codex-usage-tracker command")
     mcp_config = json.loads((REPO_ROOT / ".mcp.json").read_text(encoding="utf-8"))
-    mcp_server = mcp_config.get("mcpServers", {}).get("codex-usage-tracker", {})
+    mcp_server = mcp_config.get("mcpServers", {}).get("ai-usage-dashboard", {})
     if mcp_server.get("command") != "python3":
         failures.append(".mcp.json should use the system python3 bootstrap launcher")
     if mcp_server.get("args") != ["./skills/codex-usage-tracker/scripts/run_mcp.py"]:
@@ -199,9 +201,9 @@ def _check_packaging_metadata() -> list[str]:
     launcher = (REPO_ROOT / "skills/codex-usage-tracker/scripts/run_mcp.py").read_text(
         encoding="utf-8"
     )
-    if "codex-usage-tracker.git@main" in launcher:
+    if "ai-usage-dashboard.git@main" in launcher:
         failures.append("MCP runtime launcher must pin the package spec instead of tracking main")
-    package_spec = re.search(r"codex-usage-tracker\.git@([0-9a-f]{40})", launcher)
+    package_spec = re.search(r"ai-usage-dashboard\.git@([0-9a-f]{40})", launcher)
     if not package_spec:
         failures.append("MCP runtime launcher must pin a 40-character GitHub commit SHA")
     elif not _is_ancestor_when_available(package_spec.group(1), "HEAD"):

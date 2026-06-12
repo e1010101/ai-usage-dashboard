@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "codex-usage-tracker"
 version = "0.2.0"
-description = "Unofficial local Codex plugin and dashboard for investigating aggregate token usage, costs, caching, and thread patterns."
+description = "Unofficial local AI usage dashboard for investigating aggregate coding-agent token usage, costs, caching, and thread patterns."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
@@ -33,10 +33,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/douglasmonsky/codex-usage-tracker"
-Repository = "https://github.com/douglasmonsky/codex-usage-tracker"
-Issues = "https://github.com/douglasmonsky/codex-usage-tracker/issues"
-Changelog = "https://github.com/douglasmonsky/codex-usage-tracker/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/e1010101/ai-usage-dashboard"
+Repository = "https://github.com/e1010101/ai-usage-dashboard"
+Issues = "https://github.com/e1010101/ai-usage-dashboard/issues"
+Changelog = "https://github.com/e1010101/ai-usage-dashboard/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
@@ -49,7 +49,7 @@ dev = [
 ]
 
 [project.scripts]
-codex-usage-tracker = "codex_usage_tracker.cli:main"
+ai-usage-dashboard = "codex_usage_tracker.cli:main"
 
 [tool.setuptools]
 include-package-data = false

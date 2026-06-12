@@ -1,6 +1,6 @@
 # CLI and MCP JSON Schemas
 
-Codex Usage Tracker exposes aggregate-only JSON for automation through CLI `--json` flags and MCP tools. The project is evolving toward AI Usage Tracker, so payloads include source provider/app fields while the schema ids keep the `codex-usage-tracker` prefix for compatibility. These payloads do not include prompts, assistant messages, tool output, or raw transcript snippets.
+AI Usage Dashboard exposes aggregate-only JSON for automation through CLI `--json` flags and MCP tools. The project is evolving toward AI Usage Tracker, so payloads include source provider/app fields while the schema ids keep the `codex-usage-tracker` prefix for compatibility. These payloads do not include prompts, assistant messages, tool output, or raw transcript snippets.
 
 ## Companion Skill Usage
 
@@ -72,9 +72,9 @@ Known codes are `invalid_value`, `file_exists`, `file_not_found`, `permission_de
 Commands:
 
 ```bash
-codex-usage-tracker summary --group-by model --json
-codex-usage-tracker summary --group-by source_app --json
-codex-usage-tracker expensive --limit 10 --json
+ai-usage-dashboard summary --group-by model --json
+ai-usage-dashboard summary --group-by source_app --json
+ai-usage-dashboard expensive --limit 10 --json
 ```
 
 MCP:
@@ -102,8 +102,8 @@ Schema: `codex-usage-tracker-summary-v1`
 Command:
 
 ```bash
-codex-usage-tracker query --since 2026-06-01 --source-app claude-code
-codex-usage-tracker query --since 2026-06-01 --project codex-usage-tracker --min-credits 1
+ai-usage-dashboard query --since 2026-06-01 --source-app claude-code
+ai-usage-dashboard query --since 2026-06-01 --project ai-usage-dashboard --min-credits 1
 ```
 
 MCP:
@@ -156,7 +156,7 @@ Privacy mode affects returned metadata after matching rows. `redacted` hides raw
 Command:
 
 ```bash
-codex-usage-tracker recommendations --since 2026-06-01 --source-app codex --limit 10 --json
+ai-usage-dashboard recommendations --since 2026-06-01 --source-app codex --limit 10 --json
 ```
 
 MCP:
@@ -196,7 +196,7 @@ Rows include `recommendation_score`, `primary_recommendation`, `secondary_recomm
 Command:
 
 ```bash
-codex-usage-tracker session <session-id> --json
+ai-usage-dashboard session <session-id> --json
 ```
 
 MCP:
@@ -222,7 +222,7 @@ Schema: `codex-usage-tracker-session-v1`
 Command:
 
 ```bash
-codex-usage-tracker pricing-coverage --json
+ai-usage-dashboard pricing-coverage --json
 ```
 
 MCP:

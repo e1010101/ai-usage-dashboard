@@ -13,7 +13,9 @@ from typing import Any
 from codex_usage_tracker import __version__
 from codex_usage_tracker.paths import DEFAULT_MARKETPLACE_PATH, DEFAULT_PLUGIN_LINK
 
-PLUGIN_NAME = "codex-usage-tracker"
+PLUGIN_NAME = "ai-usage-dashboard"
+LEGACY_PLUGIN_NAME = "codex-usage-tracker"
+REPOSITORY_URL = "https://github.com/e1010101/ai-usage-dashboard"
 
 
 @dataclass(frozen=True)
@@ -99,7 +101,7 @@ def _prepare_plugin_dir(plugin_dir: Path, *, force: bool) -> bool:
     if plugin_dir.exists():
         if not _is_existing_tracker_plugin(plugin_dir):
             raise FileExistsError(
-                f"{plugin_dir} exists but does not look like a Codex Usage Tracker plugin."
+                f"{plugin_dir} exists but does not look like an AI Usage Dashboard plugin."
             )
         if not force:
             return False
@@ -115,7 +117,7 @@ def _remove_plugin_dir(plugin_dir: Path) -> bool:
         target = plugin_dir.resolve()
         if target.exists() and not _is_existing_tracker_plugin(target):
             raise FileExistsError(
-                f"{plugin_dir} points to {target}, which does not look like a Codex Usage Tracker plugin."
+                f"{plugin_dir} points to {target}, which does not look like an AI Usage Dashboard plugin."
             )
         plugin_dir.unlink()
         return True
@@ -123,7 +125,7 @@ def _remove_plugin_dir(plugin_dir: Path) -> bool:
         return False
     if not _is_existing_tracker_plugin(plugin_dir):
         raise FileExistsError(
-            f"{plugin_dir} exists but does not look like a Codex Usage Tracker plugin."
+            f"{plugin_dir} exists but does not look like an AI Usage Dashboard plugin."
         )
     shutil.rmtree(plugin_dir)
     return True
@@ -137,7 +139,10 @@ def _is_existing_tracker_plugin(plugin_dir: Path) -> bool:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return False
-    return isinstance(manifest, dict) and manifest.get("name") == PLUGIN_NAME
+    return isinstance(manifest, dict) and manifest.get("name") in {
+        PLUGIN_NAME,
+        LEGACY_PLUGIN_NAME,
+    }
 
 
 def _absolute_path(path: Path) -> Path:
@@ -186,30 +191,30 @@ def plugin_manifest() -> dict[str, Any]:
     return {
         "name": PLUGIN_NAME,
         "version": __version__,
-        "description": "Unofficial local tracker for aggregate Codex token usage from local session logs.",
+        "description": "Unofficial local dashboard for aggregate AI coding-agent token usage.",
         "author": {"name": "Douglas Monsky"},
-        "homepage": "https://github.com/douglasmonsky/codex-usage-tracker",
-        "repository": "https://github.com/douglasmonsky/codex-usage-tracker",
+        "homepage": REPOSITORY_URL,
+        "repository": REPOSITORY_URL,
         "license": "MIT",
         "keywords": ["codex", "tokens", "usage", "mcp", "dashboard"],
         "skills": "./skills/",
         "mcpServers": "./.mcp.json",
         "interface": {
-            "displayName": "Codex Usage Tracker",
-            "shortDescription": "Unofficial local aggregate token usage analytics for Codex",
+            "displayName": "AI Usage Dashboard",
+            "shortDescription": "Unofficial local aggregate token usage analytics for AI coding agents",
             "longDescription": (
                 "Unofficial independent project, not made by, affiliated with, endorsed by, "
-                "sponsored by, or supported by OpenAI. Reads local Codex session logs, "
-                "aggregates exact token usage counters, and generates summaries, CSV "
-                "exports, and a hoverable dashboard with optional localhost-only raw "
+                "sponsored by, or supported by OpenAI. Reads supported local coding-agent "
+                "logs, aggregates exact token usage counters, and generates summaries, "
+                "CSV exports, and a hoverable dashboard with optional localhost-only raw "
                 "context loading."
             ),
             "developerName": "Douglas Monsky",
             "category": "Productivity",
             "capabilities": ["Interactive", "Read", "Write"],
-            "websiteURL": "https://github.com/douglasmonsky/codex-usage-tracker",
-            "privacyPolicyURL": "https://github.com/douglasmonsky/codex-usage-tracker",
-            "termsOfServiceURL": "https://github.com/douglasmonsky/codex-usage-tracker",
+            "websiteURL": REPOSITORY_URL,
+            "privacyPolicyURL": REPOSITORY_URL,
+            "termsOfServiceURL": REPOSITORY_URL,
             "defaultPrompt": [
                 "Open dashboard",
                 "Heaviest thread?",
@@ -286,7 +291,10 @@ def _upsert_marketplace_entry(marketplace: dict[str, Any], plugin_dir: Path) -> 
     }
     plugins = marketplace["plugins"]
     for index, existing in enumerate(plugins):
-        if isinstance(existing, dict) and existing.get("name") == PLUGIN_NAME:
+        if isinstance(existing, dict) and existing.get("name") in {
+            PLUGIN_NAME,
+            LEGACY_PLUGIN_NAME,
+        }:
             plugins[index] = entry
             return
     plugins.append(entry)
@@ -298,7 +306,10 @@ def _remove_marketplace_entry(marketplace: dict[str, Any]) -> bool:
     marketplace["plugins"] = [
         entry
         for entry in plugins
-        if not (isinstance(entry, dict) and entry.get("name") == PLUGIN_NAME)
+        if not (
+            isinstance(entry, dict)
+            and entry.get("name") in {PLUGIN_NAME, LEGACY_PLUGIN_NAME}
+        )
     ]
     return len(marketplace["plugins"]) != before
 

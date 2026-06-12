@@ -129,7 +129,7 @@ def format_recommendations(payload: dict[str, Any]) -> str:
 
 def format_doctor(report: dict[str, Any]) -> str:
     lines = [
-        f"Codex Usage Tracker doctor: {str(report.get('status', 'unknown')).upper()}",
+        f"AI Usage Dashboard doctor: {str(report.get('status', 'unknown')).upper()}",
         f"Failures: {report.get('failures', 0)} | warnings: {report.get('warnings', 0)}",
         "",
     ]

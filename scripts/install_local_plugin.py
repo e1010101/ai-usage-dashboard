@@ -17,8 +17,8 @@ from codex_usage_tracker.plugin_installer import install_plugin  # noqa: E402
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Register Codex Usage Tracker as a local Codex plugin. "
-            "Prefer `codex-usage-tracker install-plugin` for installed packages."
+            "Register AI Usage Dashboard as a local Codex plugin. "
+            "Prefer `ai-usage-dashboard install-plugin` for installed packages."
         )
     )
     parser.add_argument("--plugin-dir", type=Path, default=DEFAULT_PLUGIN_LINK)
@@ -38,7 +38,7 @@ def main() -> int:
         force=args.force,
     )
     replacement_note = " Replaced existing plugin path." if result.replaced_existing else ""
-    print(f"Installed Codex Usage Tracker plugin at {result.plugin_dir}.{replacement_note}")
+    print(f"Installed AI Usage Dashboard plugin at {result.plugin_dir}.{replacement_note}")
     print(f"MCP Python: {result.python_executable}")
     print(f"Updated marketplace: {result.marketplace_path}")
     print("Restart Codex to discover the plugin.")

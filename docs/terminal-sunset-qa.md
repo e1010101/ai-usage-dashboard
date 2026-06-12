@@ -13,7 +13,7 @@ Date: 2026-06-12. Branch `codex/terminal-sunset-ui`, base SHA `d459f84`.
   state colors (live/updated green 13.7:1, busy cyan 9.7:1, paused yellow 16.9:1, error 5.9:1
   on `--surface`) all pass as text. `--grid-line` confined to decorative rules and
   non-interactive status chips.
-- **Offline guarantee**: generated a real static snapshot (`codex-usage-tracker dashboard`);
+- **Offline guarantee**: generated a real static snapshot (`ai-usage-dashboard dashboard`);
   zero external references in HTML markup, CSS, and all JS assets. The only `https://` strings
   in the output are pricing-source attribution URLs inside the inline JSON payload — data, not
   fetched resources. CSP note: the CSP header is served-mode only (`server.py`); `file://`
@@ -32,7 +32,7 @@ Date: 2026-06-12. Branch `codex/terminal-sunset-ui`, base SHA `d459f84`.
 - Thread-expand content fade omitted (phase 3): CSS cannot distinguish a user expand from a
   10s live-refresh rebuild; animating it would replay on every refresh. Toggle-glyph color
   transition acknowledges the action instead.
-- Prompt line carries a `codex-usage-tracker:~$` path prefix beyond the spec's bare
+- Prompt line carries a `ai-usage-dashboard:~$` path prefix beyond the spec's bare
   `usage --week` grammar (kept; echo hook preserves it).
 
 ## Remaining manual checklist (needs a human + browser)

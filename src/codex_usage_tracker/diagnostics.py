@@ -22,7 +22,7 @@ from codex_usage_tracker.paths import (
 from codex_usage_tracker.pricing import load_pricing_config
 from codex_usage_tracker.store import refresh_metadata, schema_state
 
-PLUGIN_NAME = "codex-usage-tracker"
+PLUGIN_NAME = "ai-usage-dashboard"
 
 
 @dataclass(frozen=True)
@@ -154,13 +154,13 @@ def _check_database(db_path: Path) -> DoctorCheck:
             "SQLite database",
             "warn",
             f"Database has not been created yet: {db_path}",
-            "Run: codex-usage-tracker refresh",
+            "Run: ai-usage-dashboard refresh",
         )
     return DoctorCheck(
         "SQLite database",
         "warn",
         f"Database directory has not been created yet: {db_path.parent}",
-        "Run: codex-usage-tracker refresh",
+        "Run: ai-usage-dashboard refresh",
     )
 
 
@@ -171,7 +171,7 @@ def _check_database_schema(db_path: Path) -> DoctorCheck:
             "Database schema",
             "warn",
             "Database schema has not been initialized yet.",
-            "Run: codex-usage-tracker refresh",
+            "Run: ai-usage-dashboard refresh",
         )
     version = state["schema_version"]
     expected = state["expected_schema_version"]
@@ -180,14 +180,14 @@ def _check_database_schema(db_path: Path) -> DoctorCheck:
             "Database schema",
             "warn",
             f"Database schema is at version {version}; expected {expected}.",
-            "Run: codex-usage-tracker rebuild-index if refresh does not migrate it cleanly.",
+            "Run: ai-usage-dashboard rebuild-index if refresh does not migrate it cleanly.",
         )
     if not state["checksum_matches"]:
         return DoctorCheck(
             "Database schema",
             "warn",
             "usage_events schema checksum does not match the package schema.",
-            "Run: codex-usage-tracker rebuild-index after confirming your local aggregate index can be regenerated.",
+            "Run: ai-usage-dashboard rebuild-index after confirming your local aggregate index can be regenerated.",
         )
     return DoctorCheck(
         "Database schema",
@@ -203,7 +203,7 @@ def _check_parser_diagnostics(db_path: Path) -> DoctorCheck:
             "Parser diagnostics",
             "warn",
             "No parser diagnostics are available yet.",
-            "Run: codex-usage-tracker refresh",
+            "Run: ai-usage-dashboard refresh",
         )
     diagnostics = {
         key.removeprefix("parser_"): _safe_int(value)
@@ -230,7 +230,7 @@ def _check_parser_diagnostics(db_path: Path) -> DoctorCheck:
             "Parser diagnostics",
             "warn",
             "Schema drift detected in latest refresh: " + ", ".join(parts) + ".",
-            "Run: codex-usage-tracker inspect-log <path> on a skipped log, then rebuild-index after updating parser support.",
+            "Run: ai-usage-dashboard inspect-log <path> on a skipped log, then rebuild-index after updating parser support.",
         )
     parsed = metadata.get("parsed_events", "0")
     scanned = metadata.get("scanned_files", "0")
@@ -248,7 +248,7 @@ def _check_dashboard_target(dashboard_path: Path) -> DoctorCheck:
         "Dashboard",
         "warn",
         f"Dashboard has not been generated yet: {dashboard_path}",
-        "Run: codex-usage-tracker dashboard",
+        "Run: ai-usage-dashboard dashboard",
     )
 
 
@@ -266,7 +266,7 @@ def _check_pricing(pricing_path: Path) -> DoctorCheck:
             "Pricing config",
             "warn",
             f"No local pricing config found: {pricing_path}",
-            "Cost estimates are disabled until you run: codex-usage-tracker update-pricing",
+            "Cost estimates are disabled until you run: ai-usage-dashboard update-pricing",
         )
     source = config.source or {}
     source_url = source.get("url")
@@ -285,7 +285,7 @@ def _check_project_root(repo_root: Path | None) -> DoctorCheck:
             "Plugin root",
             "warn",
             "Could not find .codex-plugin/plugin.json and .mcp.json from current paths.",
-            "Run from the codex-usage-tracker repo, or install with: codex-usage-tracker install-plugin",
+            "Run from the ai-usage-dashboard repo, or install with: ai-usage-dashboard install-plugin",
         )
     return DoctorCheck("Plugin root", "pass", f"Detected plugin root: {repo_root}")
 
@@ -296,7 +296,7 @@ def _check_plugin_link(plugin_link: Path, repo_root: Path | None) -> DoctorCheck
             "Plugin registration",
             "warn",
             f"Plugin path is missing: {plugin_link}",
-            "Run: codex-usage-tracker install-plugin",
+            "Run: ai-usage-dashboard install-plugin",
         )
     if plugin_link.is_symlink():
         target = plugin_link.resolve()
@@ -311,7 +311,7 @@ def _check_plugin_link(plugin_link: Path, repo_root: Path | None) -> DoctorCheck
             "Plugin registration",
             "fail",
             f"Plugin symlink points to {target}, but no plugin manifest and MCP config were found there.",
-            "Replace it with: codex-usage-tracker install-plugin --force",
+            "Replace it with: ai-usage-dashboard install-plugin --force",
         )
     if plugin_link.is_dir() and _looks_like_plugin_root(plugin_link):
         return DoctorCheck(
@@ -324,7 +324,7 @@ def _check_plugin_link(plugin_link: Path, repo_root: Path | None) -> DoctorCheck
             "Plugin registration",
             "fail",
             f"Plugin path exists but is not a generated plugin directory or symlink: {plugin_link}",
-            "Move the existing path or install with: codex-usage-tracker install-plugin --force",
+            "Move the existing path or install with: ai-usage-dashboard install-plugin --force",
         )
     return DoctorCheck("Plugin registration", "pass", f"Plugin path exists: {plugin_link}.")
 
@@ -335,7 +335,7 @@ def _check_marketplace(marketplace_path: Path) -> DoctorCheck:
             "Marketplace entry",
             "warn",
             f"Marketplace file is missing: {marketplace_path}",
-            "Run: codex-usage-tracker install-plugin",
+            "Run: ai-usage-dashboard install-plugin",
         )
     try:
         data = json.loads(marketplace_path.read_text(encoding="utf-8"))
@@ -365,7 +365,7 @@ def _check_marketplace(marketplace_path: Path) -> DoctorCheck:
         "Marketplace entry",
         "warn",
         f"No {PLUGIN_NAME} entry found in {marketplace_path}.",
-        "Run: codex-usage-tracker install-plugin",
+        "Run: ai-usage-dashboard install-plugin",
     )
 
 
@@ -375,7 +375,7 @@ def _check_mcp_config(repo_root: Path | None) -> DoctorCheck:
             "MCP config",
             "warn",
             "Cannot check .mcp.json without a detected project root.",
-            "Run from the codex-usage-tracker repo, or install with: codex-usage-tracker install-plugin",
+            "Run from the ai-usage-dashboard repo, or install with: ai-usage-dashboard install-plugin",
         )
     config_path = repo_root / ".mcp.json"
     if not config_path.exists():
@@ -438,7 +438,7 @@ def _check_mcp_runtime(repo_root: Path | None) -> DoctorCheck:
             "MCP runtime",
             "warn",
             "Cannot validate the MCP runtime without a detected plugin root.",
-            "Run from the codex-usage-tracker repo, or install with: codex-usage-tracker install-plugin",
+            "Run from the ai-usage-dashboard repo, or install with: ai-usage-dashboard install-plugin",
         )
     config_path = repo_root / ".mcp.json"
     try:
@@ -448,7 +448,7 @@ def _check_mcp_runtime(repo_root: Path | None) -> DoctorCheck:
             "MCP runtime",
             "warn",
             "Cannot validate the MCP runtime until .mcp.json is readable and valid.",
-            "Fix .mcp.json, then rerun: codex-usage-tracker doctor --suggest-repair",
+            "Fix .mcp.json, then rerun: ai-usage-dashboard doctor --suggest-repair",
         )
     servers = data.get("mcpServers") if isinstance(data, dict) else None
     server = servers.get(PLUGIN_NAME) if isinstance(servers, dict) else None
@@ -456,7 +456,7 @@ def _check_mcp_runtime(repo_root: Path | None) -> DoctorCheck:
         return DoctorCheck(
             "MCP runtime",
             "warn",
-            "Cannot validate the MCP runtime until the codex-usage-tracker server is configured.",
+            "Cannot validate the MCP runtime until the ai-usage-dashboard server is configured.",
             "Restore the server entry in .mcp.json.",
         )
     args = server.get("args")
@@ -465,7 +465,7 @@ def _check_mcp_runtime(repo_root: Path | None) -> DoctorCheck:
             "MCP runtime",
             "warn",
             "MCP server args are missing or not a string list.",
-            "Restore the generated plugin wrapper with: codex-usage-tracker install-plugin --force",
+            "Restore the generated plugin wrapper with: ai-usage-dashboard install-plugin --force",
         )
     if _uses_bootstrap_launcher(args):
         return _check_mcp_launcher(repo_root, args)
@@ -474,7 +474,7 @@ def _check_mcp_runtime(repo_root: Path | None) -> DoctorCheck:
             "MCP runtime",
             "warn",
             "MCP server does not use the expected module or launcher form, so import validation was skipped.",
-            "Restore the generated plugin wrapper with: codex-usage-tracker install-plugin --force",
+            "Restore the generated plugin wrapper with: ai-usage-dashboard install-plugin --force",
         )
     command = _resolve_mcp_command(server.get("command"), repo_root)
     if command is None:
@@ -482,7 +482,7 @@ def _check_mcp_runtime(repo_root: Path | None) -> DoctorCheck:
             "MCP runtime",
             "fail",
             f"MCP server command is not executable: {server.get('command')!r}.",
-            "Reinstall the plugin with a working Python: codex-usage-tracker install-plugin --force",
+            "Reinstall the plugin with a working Python: ai-usage-dashboard install-plugin --force",
         )
     env = os.environ.copy()
     configured_env = server.get("env")
@@ -511,7 +511,7 @@ def _check_mcp_runtime(repo_root: Path | None) -> DoctorCheck:
             "MCP runtime",
             "fail",
             f"MCP Python could not be executed: {exc}",
-            "Reinstall the plugin with a working Python: codex-usage-tracker install-plugin --force",
+            "Reinstall the plugin with a working Python: ai-usage-dashboard install-plugin --force",
         )
     if result.returncode:
         stderr = _first_error_line(result.stderr) or _first_error_line(result.stdout)
@@ -523,7 +523,7 @@ def _check_mcp_runtime(repo_root: Path | None) -> DoctorCheck:
             "fail",
             detail,
             (
-                "If this is a source checkout, rerun: codex-usage-tracker install-plugin "
+                "If this is a source checkout, rerun: ai-usage-dashboard install-plugin "
                 "--python .venv/bin/python --force. Otherwise reinstall with pipx and rerun setup."
             ),
         )

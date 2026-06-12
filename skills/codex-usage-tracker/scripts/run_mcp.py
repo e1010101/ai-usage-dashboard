@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bootstrap and run the Codex Usage Tracker MCP server.
+"""Bootstrap and run the AI Usage Dashboard MCP server.
 
 Marketplace installs mirror only the plugin bundle, not a repo-local virtual
 environment. This launcher creates a cached runtime on first use, installs the
@@ -15,7 +15,7 @@ from pathlib import Path
 
 PACKAGE_SPEC = os.environ.get(
     "CODEX_USAGE_TRACKER_PACKAGE_SPEC",
-    "git+https://github.com/douglasmonsky/codex-usage-tracker.git@be2a14fb090c29cafc089a202329b6386480e72b",
+    "git+https://github.com/e1010101/ai-usage-dashboard.git@6ecb9ef541a782742e7988e68b5ced9cde2dd2ae",
 )
 RUNTIME_VERSION = "0.2.0"
 PACKAGE_SPEC_MARKER = ".codex-usage-tracker-package-spec"
@@ -41,7 +41,7 @@ def main() -> int:
     _ensure_runtime(runtime_python)
     if not _can_import_server(runtime_python):
         print(
-            "Codex Usage Tracker runtime installed, but the MCP server could not be imported.",
+            "AI Usage Dashboard runtime installed, but the MCP server could not be imported.",
             file=sys.stderr,
         )
         return 1
@@ -107,9 +107,9 @@ def _can_import_server(python_path: Path) -> bool:
 def _ensure_runtime(python_path: Path) -> None:
     venv_root = _venv_root(python_path)
     if not python_path.exists():
-        print(f"Creating Codex Usage Tracker MCP runtime at {venv_root}", file=sys.stderr)
+        print(f"Creating AI Usage Dashboard MCP runtime at {venv_root}", file=sys.stderr)
         subprocess.run([sys.executable, "-m", "venv", str(venv_root)], check=True)
-    print(f"Installing Codex Usage Tracker MCP runtime from {PACKAGE_SPEC}", file=sys.stderr)
+    print(f"Installing AI Usage Dashboard MCP runtime from {PACKAGE_SPEC}", file=sys.stderr)
     subprocess.run(
         [str(python_path), "-m", "pip", "install", "--upgrade", PACKAGE_SPEC],
         check=True,
