@@ -158,7 +158,7 @@ def test_provider_and_app_filters_work_for_dashboard_queries(tmp_path: Path) -> 
 def test_refresh_reports_skipped_corrupt_token_events(tmp_path: Path) -> None:
     codex_home = _make_codex_home(tmp_path)
     db_path = tmp_path / "usage.sqlite3"
-    log_path = next((codex_home / "sessions").glob("**/*.jsonl"))
+    log_path = next((codex_home / "sessions").glob(f"**/*{SESSION_ID}.jsonl"))
     corrupt = _token_event(600, 300)
     corrupt["payload"]["info"]["last_token_usage"]["total_tokens"] = "bad-total"  # type: ignore[index]
     valid = _token_event(650, 50)
