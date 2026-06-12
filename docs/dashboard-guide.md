@@ -63,6 +63,17 @@ Static file mode can still filter, sort, and inspect aggregate call fields. It c
 
 The localhost server uses a random per-server token for refresh and context API calls, validates loopback `Host` and `Origin` headers, and can run as aggregate-only with `ai-usage-dashboard serve-dashboard --no-context-api`.
 
+## Usage Analytics
+
+Below the summary cards and Provider Details strip, the `Usage Analytics` section charts the visible rows:
+
+- The usage-over-time chart stacks tokens (or estimated cost, via the `Tokens`/`Cost` toggle) per provider. Buckets adapt to the active time filter: hourly for ranges up to three days, then daily, weekly, and monthly.
+- When a bounded time filter is active, each numeric summary card shows a delta against the preceding equal-length period (for example, `This week` compares against the same span of the prior week). Deltas are computed from loaded rows.
+- `Reasoning Effort` breaks down calls, tokens, cost, and reasoning-output share per recorded effort level. Effort is captured going forward from status-line metadata, so older calls may be excluded; a coverage note shows how many visible calls carry an effort value.
+- `Top Projects` ranks the visible projects by token volume with estimated cost and, when a prior period exists, a token-volume trend.
+
+All analytics are derived client-side from the same filtered aggregate rows the tables use — no extra data is collected.
+
 ## Insights View
 
 ![Insights view with ranked attention cards, investigation presets, and top threads by attention score.](assets/dashboard-insights.png)

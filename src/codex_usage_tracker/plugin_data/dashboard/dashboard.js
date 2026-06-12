@@ -2,6 +2,7 @@
     const dashboardData = window.CodexUsageDashboardData;
     const {
       number,
+      compact,
       money,
       credits,
       pct,
@@ -114,6 +115,14 @@
     const usageLimitsEl = document.getElementById('usageLimits');
     const providerDetailsEl = document.getElementById('providerDetails');
     const providerDetailGroupsEl = document.getElementById('providerDetailGroups');
+    const usageAnalyticsEl = document.getElementById('usageAnalytics');
+    const usageTrendEl = document.getElementById('usageTrend');
+    const trendMetricTokensEl = document.getElementById('trendMetricTokens');
+    const trendMetricCostEl = document.getElementById('trendMetricCost');
+    const effortBreakdownBlockEl = document.getElementById('effortBreakdownBlock');
+    const effortBreakdownEl = document.getElementById('effortBreakdown');
+    const projectLeaderboardBlockEl = document.getElementById('projectLeaderboardBlock');
+    const projectLeaderboardEl = document.getElementById('projectLeaderboard');
     let rowByRecordId = new Map();
     let threadAttachmentByRecordId = new Map();
     const expandedThreads = new Set();
@@ -149,6 +158,7 @@
       anthropic: 'Capture Claude Code statusLine rate_limits to show 5h and 7d remaining usage.',
     };
     const limitStaleAfterMs = 24 * 60 * 60 * 1000;
+    let trendMetric = 'tokens';
     let activeView = ['calls', 'threads', 'insights'].includes(initialState.view) ? initialState.view : 'insights';
     let sortKey = optionValueExists(sortEl, initialState.sort) ? initialState.sort : sortEl.value || 'time';
     let sortDirection = ['asc', 'desc'].includes(initialState.direction) ? initialState.direction : defaultSortDirection(sortKey);
@@ -591,6 +601,313 @@
           </dl>
         </div>
       `).join('');
+    }
+    function previousPeriodRange(range) {
+      if (!range || !range.active || range.invalid || !range.start || !range.endExclusive) return null;
+      const endMs = Math.min(range.endExclusive.getTime(), Date.now());
+      const spanMs = endMs - range.start.getTime();
+      if (spanMs <= 0) return null;
+      return {
+        active: true,
+        invalid: false,
+        start: new Date(range.start.getTime() - spanMs),
+        endExclusive: range.start,
+        label: 'Prior period',
+      };
+    }
+    function deltaDisplay(current, previous) {
+      const cur = Number(current) || 0;
+      const prev = Number(previous) || 0;
+      if (!cur && !prev) return null;
+      if (!prev) return { text: 'new', trend: 'up' };
+      const change = (cur - prev) / prev;
+      const magnitude = Math.abs(change * 100);
+      const trend = magnitude < 0.5 ? 'flat' : change > 0 ? 'up' : 'down';
+      const formatted = magnitude >= 100 ? number.format(Math.round(magnitude)) : magnitude.toFixed(1);
+      return { text: `${change >= 0 ? '+' : '-'}${formatted}%`, trend };
+    }
+    function updateCardDeltas(summary, previousSummary) {
+      const fields = [
+        ['visibleCalls', value => number.format(value)],
+        ['totalTokens', value => number.format(value)],
+        ['inputTokens', value => number.format(value)],
+        ['cacheTokens', value => number.format(value)],
+        ['outputTokens', value => number.format(value)],
+        ['reasoningTokens', value => number.format(value)],
+        ['estimatedCost', value => money(value)],
+      ];
+      fields.forEach(([key, formatValue]) => {
+        const el = document.getElementById(`${key}Delta`);
+        if (!el) return;
+        const info = previousSummary ? deltaDisplay(summary[key], previousSummary[key]) : null;
+        if (!info) {
+          el.hidden = true;
+          el.textContent = '';
+          el.removeAttribute('data-trend');
+          el.title = '';
+          return;
+        }
+        el.hidden = false;
+        el.textContent = `${info.text} vs prior`;
+        el.dataset.trend = info.trend;
+        el.title = `Preceding equal-length period: ${formatValue(previousSummary[key])}. Computed from loaded rows.`;
+      });
+    }
+    const trendHourFormat = new Intl.DateTimeFormat([], { hour: 'numeric' });
+    const trendDayFormat = new Intl.DateTimeFormat([], { month: 'short', day: 'numeric' });
+    const trendMonthFormat = new Intl.DateTimeFormat([], { month: 'short', year: 'numeric' });
+    const trendProviderOrder = ['openai', 'anthropic', 'other'];
+    function trendProviderKey(row) {
+      if (row.source_provider === 'openai') return 'openai';
+      if (row.source_provider === 'anthropic') return 'anthropic';
+      return 'other';
+    }
+    function trendProviderLabel(key) {
+      if (key === 'openai') return providerShortName('openai');
+      if (key === 'anthropic') return providerShortName('anthropic');
+      return 'Other';
+    }
+    function trendUnitFor(startMs, endMs) {
+      const spanDays = (endMs - startMs) / 86400000;
+      if (spanDays <= 3.05) return 'hour';
+      if (spanDays <= 130) return 'day';
+      if (spanDays <= 740) return 'week';
+      return 'month';
+    }
+    function trendBucketDate(date, unit) {
+      if (unit === 'hour') return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours());
+      if (unit === 'week') return weekStart(localDay(date));
+      if (unit === 'month') return new Date(date.getFullYear(), date.getMonth(), 1);
+      return localDay(date);
+    }
+    function nextTrendBucket(date, unit) {
+      if (unit === 'hour') return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours() + 1);
+      if (unit === 'week') return addDays(date, 7);
+      if (unit === 'month') return new Date(date.getFullYear(), date.getMonth() + 1, 1);
+      return addDays(date, 1);
+    }
+    function trendBucketLabel(ms, unit) {
+      const date = new Date(ms);
+      if (unit === 'hour') return trendHourFormat.format(date);
+      if (unit === 'month') return trendMonthFormat.format(date);
+      return trendDayFormat.format(date);
+    }
+    function trendValueText(value) {
+      return trendMetric === 'cost' ? money(value) : compact(value);
+    }
+    function buildUsageTrend(rows, dateRange) {
+      const metricValue = trendMetric === 'cost'
+        ? row => Number(row.estimated_cost_usd || 0)
+        : row => Number(row.total_tokens || 0);
+      const stamps = [];
+      for (const row of rows) {
+        const ts = row.event_timestamp ? new Date(row.event_timestamp) : null;
+        if (ts && !Number.isNaN(ts.getTime())) stamps.push({ ts, row });
+      }
+      if (!stamps.length) return null;
+      const nowMs = Date.now();
+      let startMs = dateRange && dateRange.active && !dateRange.invalid && dateRange.start
+        ? dateRange.start.getTime()
+        : Math.min(...stamps.map(stamp => stamp.ts.getTime()));
+      let endMs = dateRange && dateRange.active && !dateRange.invalid && dateRange.endExclusive
+        ? Math.min(dateRange.endExclusive.getTime(), nowMs + 3600000)
+        : Math.max(...stamps.map(stamp => stamp.ts.getTime())) + 1;
+      if (endMs <= startMs) endMs = startMs + 1;
+      const unit = trendUnitFor(startMs, endMs);
+      const buckets = new Map();
+      let cursor = trendBucketDate(new Date(startMs), unit);
+      let guard = 0;
+      while (cursor.getTime() < endMs && guard < 400) {
+        buckets.set(cursor.getTime(), { openai: 0, anthropic: 0, other: 0 });
+        cursor = nextTrendBucket(cursor, unit);
+        guard += 1;
+      }
+      const seenProviders = new Set();
+      for (const stamp of stamps) {
+        const key = trendBucketDate(stamp.ts, unit).getTime();
+        const bucket = buckets.get(key);
+        if (!bucket) continue;
+        const provider = trendProviderKey(stamp.row);
+        bucket[provider] += metricValue(stamp.row);
+        seenProviders.add(provider);
+      }
+      const ordered = [...buckets.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([ms, sums]) => ({ ms, ...sums, total: sums.openai + sums.anthropic + sums.other }));
+      return {
+        unit,
+        buckets: ordered,
+        providers: trendProviderOrder.filter(provider => seenProviders.has(provider)),
+      };
+    }
+    function renderUsageTrend(rows, dateRange) {
+      const trend = buildUsageTrend(rows, dateRange);
+      if (!trend || !trend.buckets.length || !trend.buckets.some(bucket => bucket.total > 0)) {
+        usageTrendEl.innerHTML = '<p class="trend-empty">No usage in range to chart.</p>';
+        return;
+      }
+      const width = 960;
+      const height = 180;
+      const padTop = 16;
+      const padBottom = 24;
+      const padX = 8;
+      const innerHeight = height - padTop - padBottom;
+      const max = Math.max(...trend.buckets.map(bucket => bucket.total));
+      const count = trend.buckets.length;
+      const slot = (width - padX * 2) / count;
+      const barWidth = Math.max(Math.min(slot * 0.72, 48), 1.5);
+      const bars = trend.buckets.map((bucket, index) => {
+        const x = padX + index * slot + (slot - barWidth) / 2;
+        let y = height - padBottom;
+        const segments = trendProviderOrder.map(provider => {
+          const value = bucket[provider];
+          if (!value) return '';
+          const segHeight = Math.max((value / max) * innerHeight, 0.5);
+          y -= segHeight;
+          return `<rect data-provider="${provider}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${segHeight.toFixed(2)}"></rect>`;
+        }).join('');
+        const tooltip = [
+          `${trendBucketLabel(bucket.ms, trend.unit)}: ${trendValueText(bucket.total)}`,
+          ...trendProviderOrder
+            .filter(provider => bucket[provider] > 0)
+            .map(provider => `${trendProviderLabel(provider)} ${trendValueText(bucket[provider])}`),
+        ].join(' · ');
+        return `<g class="trend-bar"><title>${escapeHtml(tooltip)}</title>${segments}</g>`;
+      }).join('');
+      const labelIndexes = count <= 2 ? [...trend.buckets.keys()] : [0, Math.floor((count - 1) / 2), count - 1];
+      const labels = [...new Set(labelIndexes)].map(index => {
+        const anchor = index === 0 ? 'start' : index === count - 1 ? 'end' : 'middle';
+        const x = padX + index * slot + slot / 2;
+        return `<text x="${x.toFixed(2)}" y="${height - 7}" text-anchor="${anchor}">${escapeHtml(trendBucketLabel(trend.buckets[index].ms, trend.unit))}</text>`;
+      }).join('');
+      const midY = padTop + innerHeight / 2;
+      const legend = trend.providers.map(provider => `
+        <span class="trend-legend-item"><span class="trend-swatch" data-provider="${provider}"></span>${escapeHtml(trendProviderLabel(provider))}</span>
+      `).join('');
+      const unitNoun = { hour: 'hourly', day: 'daily', week: 'weekly', month: 'monthly' }[trend.unit] || trend.unit;
+      usageTrendEl.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(`${unitNoun} ${trendMetric === 'cost' ? 'estimated cost' : 'total tokens'}; peak ${trendValueText(max)}`)}">
+          <line class="trend-grid" x1="${padX}" y1="${midY.toFixed(2)}" x2="${width - padX}" y2="${midY.toFixed(2)}"></line>
+          <line class="trend-grid" x1="${padX}" y1="${padTop}" x2="${width - padX}" y2="${padTop}"></line>
+          <text x="${padX}" y="${padTop - 5}">${escapeHtml(trendValueText(max))}</text>
+          ${bars}
+          ${labels}
+        </svg>
+        <div class="trend-legend">${legend}</div>
+      `;
+    }
+    function buildEffortBreakdown(rows) {
+      const map = new Map();
+      for (const row of rows) {
+        if (!row.effort) continue;
+        if (!map.has(row.effort)) {
+          map.set(row.effort, { effort: row.effort, calls: 0, tokens: 0, cost: 0, outputTokens: 0, reasoningTokens: 0 });
+        }
+        const entry = map.get(row.effort);
+        entry.calls += 1;
+        entry.tokens += Number(row.total_tokens || 0);
+        entry.cost += Number(row.estimated_cost_usd || 0);
+        entry.outputTokens += Number(row.output_tokens || 0);
+        entry.reasoningTokens += Number(row.reasoning_output_tokens || 0);
+      }
+      return [...map.values()].sort((a, b) => b.tokens - a.tokens);
+    }
+    function renderEffortBreakdown(rows) {
+      const entries = buildEffortBreakdown(rows);
+      if (!entries.length) {
+        effortBreakdownBlockEl.hidden = true;
+        effortBreakdownEl.innerHTML = '';
+        return;
+      }
+      effortBreakdownBlockEl.hidden = false;
+      const withEffort = entries.reduce((sum, entry) => sum + entry.calls, 0);
+      const coverageNote = withEffort < rows.length
+        ? `<p class="analytics-note">${number.format(withEffort)} of ${number.format(rows.length)} visible calls have a recorded effort.</p>`
+        : '';
+      effortBreakdownEl.innerHTML = `
+        <table class="analytics-table">
+          <thead><tr><th>Effort</th><th class="num">Calls</th><th class="num">Tokens</th><th class="num">Cost</th><th class="num">Reasoning share</th></tr></thead>
+          <tbody>
+            ${entries.map(entry => `
+              <tr>
+                <td>${escapeHtml(entry.effort)}</td>
+                <td class="num">${number.format(entry.calls)}</td>
+                <td class="num" title="${escapeHtml(number.format(entry.tokens))}">${escapeHtml(compact(entry.tokens))}</td>
+                <td class="num">${pricingConfigured ? escapeHtml(money(entry.cost)) : 'n/a'}</td>
+                <td class="num">${entry.outputTokens > 0 ? escapeHtml(pct(entry.reasoningTokens / entry.outputTokens)) : '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ${coverageNote}
+      `;
+    }
+    function buildProjectLeaderboard(rows, previousRows) {
+      const groupKey = row => row.project_name || 'Unknown project';
+      const totals = new Map();
+      for (const row of rows) {
+        const key = groupKey(row);
+        if (!totals.has(key)) totals.set(key, { project: key, calls: 0, tokens: 0, cost: 0 });
+        const entry = totals.get(key);
+        entry.calls += 1;
+        entry.tokens += Number(row.total_tokens || 0);
+        entry.cost += Number(row.estimated_cost_usd || 0);
+      }
+      const previousTokens = new Map();
+      if (previousRows) {
+        for (const row of previousRows) {
+          const key = groupKey(row);
+          previousTokens.set(key, (previousTokens.get(key) || 0) + Number(row.total_tokens || 0));
+        }
+      }
+      return [...totals.values()]
+        .sort((a, b) => b.tokens - a.tokens)
+        .slice(0, 6)
+        .map(entry => ({
+          ...entry,
+          delta: previousRows ? deltaDisplay(entry.tokens, previousTokens.get(entry.project) || 0) : null,
+        }));
+    }
+    function renderProjectLeaderboard(rows, previousRows) {
+      const entries = buildProjectLeaderboard(rows, previousRows);
+      if (!entries.length) {
+        projectLeaderboardBlockEl.hidden = true;
+        projectLeaderboardEl.innerHTML = '';
+        return;
+      }
+      projectLeaderboardBlockEl.hidden = false;
+      const showTrend = Boolean(previousRows);
+      projectLeaderboardEl.innerHTML = `
+        <table class="analytics-table">
+          <thead><tr><th>Project</th><th class="num">Calls</th><th class="num">Tokens</th><th class="num">Cost</th>${showTrend ? '<th class="num">Trend</th>' : ''}</tr></thead>
+          <tbody>
+            ${entries.map(entry => `
+              <tr>
+                <td title="${escapeHtml(entry.project)}">${escapeHtml(truncate(entry.project, 36))}</td>
+                <td class="num">${number.format(entry.calls)}</td>
+                <td class="num" title="${escapeHtml(number.format(entry.tokens))}">${escapeHtml(compact(entry.tokens))}</td>
+                <td class="num">${pricingConfigured ? escapeHtml(money(entry.cost)) : 'n/a'}</td>
+                ${showTrend ? `<td class="num"><span class="analytics-trend" data-trend="${entry.delta ? escapeHtml(entry.delta.trend) : 'flat'}">${entry.delta ? escapeHtml(entry.delta.text) : '-'}</span></td>` : ''}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ${showTrend ? '<p class="analytics-note">Trend compares token volume with the preceding equal-length period.</p>' : ''}
+      `;
+    }
+    function renderUsageAnalytics(rows, dateRange, previousRows) {
+      if (!rows.length) {
+        usageAnalyticsEl.hidden = true;
+        return;
+      }
+      usageAnalyticsEl.hidden = false;
+      trendMetricTokensEl.setAttribute('aria-pressed', trendMetric === 'tokens' ? 'true' : 'false');
+      trendMetricCostEl.setAttribute('aria-pressed', trendMetric === 'cost' ? 'true' : 'false');
+      trendMetricCostEl.disabled = !pricingConfigured;
+      trendMetricCostEl.title = pricingConfigured ? '' : 'Run ai-usage-dashboard update-pricing to chart estimated cost.';
+      renderUsageTrend(rows, dateRange);
+      renderEffortBreakdown(rows);
+      renderProjectLeaderboard(rows, previousRows);
     }
     function rebuildSelectOptions(select, values, label) {
       const previous = select.value;
@@ -1495,10 +1812,15 @@
       rowsEl.textContent = '';
       updateSortControls();
       const summary = buildUniversalSummary(rows);
+      const previousRange = previousPeriodRange(dateRange);
+      const previousRows = previousRange ? filtered(previousRange) : null;
+      const previousSummary = previousRows ? buildUniversalSummary(previousRows) : null;
       document.getElementById('visibleCalls').textContent = number.format(summary.visibleCalls);
       renderProviderTabs(rows);
       updateSummaryCards(rows, summary);
+      updateCardDeltas(summary, previousSummary);
       renderProviderDetails(rows, summary);
+      renderUsageAnalytics(rows, dateRange, previousRows);
       insightsViewEl.setAttribute('aria-pressed', activeView === 'insights' ? 'true' : 'false');
       callsViewEl.setAttribute('aria-pressed', activeView === 'calls' ? 'true' : 'false');
       threadsViewEl.setAttribute('aria-pressed', activeView === 'threads' ? 'true' : 'false');
@@ -2174,7 +2496,12 @@
         });
         const range = currentDateRange();
         if (range.active && !range.invalid) {
-          if (range.start) params.set('since', range.start.toISOString());
+          const priorRange = previousPeriodRange(range);
+          if (priorRange) {
+            params.set('since', priorRange.start.toISOString());
+          } else if (range.start) {
+            params.set('since', range.start.toISOString());
+          }
           if (range.endExclusive) params.set('until', range.endExclusive.toISOString());
         }
         const response = await fetch(`/api/usage?${params.toString()}`, {
@@ -2223,6 +2550,16 @@
     insightsViewEl.addEventListener('click', () => setView('insights'));
     callsViewEl.addEventListener('click', () => setView('calls'));
     threadsViewEl.addEventListener('click', () => setView('threads'));
+    trendMetricTokensEl.addEventListener('click', () => {
+      if (trendMetric === 'tokens') return;
+      trendMetric = 'tokens';
+      render();
+    });
+    trendMetricCostEl.addEventListener('click', () => {
+      if (trendMetric === 'cost') return;
+      trendMetric = 'cost';
+      render();
+    });
     clearPresetEl.addEventListener('click', clearPreset);
     copyViewLinkEl.addEventListener('click', copyCurrentViewLink);
     exportVisibleEl.addEventListener('click', exportCurrentRows);

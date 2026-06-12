@@ -1,5 +1,7 @@
 (() => {
   const number = new Intl.NumberFormat();
+  const compactNumber = new Intl.NumberFormat([], { notation: 'compact', maximumFractionDigits: 1 });
+  const compact = value => compactNumber.format(Number(value) || 0);
   const tableDateFormat = new Intl.DateTimeFormat([], {
     month: 'short',
     day: 'numeric',
@@ -115,6 +117,7 @@
 
   window.CodexUsageDashboardFormat = Object.freeze({
     number,
+    compact,
     money,
     credits,
     pct,

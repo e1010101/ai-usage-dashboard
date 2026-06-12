@@ -782,6 +782,65 @@ def test_dashboard_universal_summary_cards_contract(tmp_path: Path) -> None:
     ) in dashboard_js
 
 
+def test_dashboard_usage_analytics_contract(tmp_path: Path) -> None:
+    codex_home = _make_codex_home(tmp_path)
+    db_path = tmp_path / "usage.sqlite3"
+    refresh_usage_index(codex_home=codex_home, db_path=db_path)
+    dashboard_path = tmp_path / "dashboard.html"
+    generate_dashboard(db_path=db_path, output_path=dashboard_path)
+
+    dashboard = dashboard_path.read_text(encoding="utf-8")
+    asset_dir = tmp_path / "codex-usage-tracker-assets"
+    dashboard_js = (asset_dir / "dashboard.js").read_text(encoding="utf-8")
+    dashboard_format_js = (asset_dir / "dashboard_format.js").read_text(encoding="utf-8")
+    dashboard_css = (asset_dir / "dashboard.css").read_text(encoding="utf-8")
+
+    # The analytics section renders below the provider details strip.
+    assert dashboard.index('<section id="providerDetails"') < dashboard.index('<section id="usageAnalytics"')
+    assert "Usage Analytics" in dashboard
+    assert "usageTrend" in dashboard
+    assert "trendMetricTokens" in dashboard
+    assert "trendMetricCost" in dashboard
+    assert "Reasoning Effort" in dashboard
+    assert "Top Projects" in dashboard
+
+    # Every numeric universal card carries a prior-period delta slot; Usage Limits does not.
+    for delta_id in (
+        "visibleCallsDelta",
+        "totalTokensDelta",
+        "inputTokensDelta",
+        "cacheTokensDelta",
+        "outputTokensDelta",
+        "reasoningTokensDelta",
+        "estimatedCostDelta",
+    ):
+        assert delta_id in dashboard
+    assert "usageLimitsDelta" not in dashboard
+
+    # Chart, delta, and analytics builders are centralized in the dashboard script.
+    for symbol in (
+        "previousPeriodRange",
+        "deltaDisplay",
+        "updateCardDeltas",
+        "buildUsageTrend",
+        "renderUsageTrend",
+        "buildEffortBreakdown",
+        "buildProjectLeaderboard",
+        "renderUsageAnalytics",
+    ):
+        assert symbol in dashboard_js
+    assert "vs prior" in dashboard_js
+    # Live refresh fetches the prior period too, so deltas have data to compare.
+    assert "previousPeriodRange(range)" in dashboard_js
+    assert "notation: 'compact'" in dashboard_format_js
+    # The SVG chart is hand-rolled; styling stays offline-safe.
+    assert ".usage-trend" in dashboard_css
+    assert ".analytics-columns" in dashboard_css
+    assert ".card-delta" in dashboard_css
+    assert "url(" not in dashboard_css
+    assert "http" not in dashboard_css
+
+
 def test_dashboard_payload_contract_includes_analysis_metadata(tmp_path: Path) -> None:
     codex_home = _make_codex_home(tmp_path)
     db_path = tmp_path / "usage.sqlite3"
