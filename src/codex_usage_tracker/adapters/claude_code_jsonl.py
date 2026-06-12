@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from codex_usage_tracker.models import SessionInfo, UsageEvent
+from codex_usage_tracker.paths import DEFAULT_CLAUDE_SESSION_META_PATH
 
 CLAUDE_CODE_ADAPTER_VERSION = "claude-code-jsonl-v1"
 CLAUDE_CODE_DIAGNOSTIC_KEYS = (
@@ -27,14 +28,27 @@ class ClaudeCodeJsonlAdapter:
     source_provider: str = "anthropic"
     source_app: str = "claude-code"
     source_format: str = CLAUDE_CODE_ADAPTER_VERSION
+    session_meta_path: Path = DEFAULT_CLAUDE_SESSION_META_PATH
 
     def discover_logs(self, root: Path, *, include_archived: bool = False) -> list[Path]:
         del include_archived
         return sorted(path for path in (root / "projects").glob("**/*.jsonl") if path.is_file())
 
     def load_session_index(self, root: Path) -> dict[str, SessionInfo]:
+        # Claude Code has no session index file; effort is captured per session
+        # from statusLine payloads because transcripts never record it.
         del root
-        return {}
+        from codex_usage_tracker.dynamic_allowance import load_claude_session_meta
+
+        return {
+            session_id: SessionInfo(
+                session_id=session_id,
+                thread_name=None,
+                updated_at=None,
+                effort=entry.get("effort") if isinstance(entry.get("effort"), str) else None,
+            )
+            for session_id, entry in load_claude_session_meta(self.session_meta_path).items()
+        }
 
     def parse_file(
         self,
@@ -42,7 +56,6 @@ class ClaudeCodeJsonlAdapter:
         session_index: dict[str, SessionInfo] | None = None,
         stats: MutableMapping[str, int] | None = None,
     ) -> list[UsageEvent]:
-        del session_index
         events: list[UsageEvent] = []
         seen: set[str] = set()
         seen_semantic: set[str] = set()
@@ -73,7 +86,9 @@ class ClaudeCodeJsonlAdapter:
                     _increment_stat(stats, "skipped_events")
                     continue
                 try:
-                    event = _build_event(path, line_number, envelope, message, usage, cumulative)
+                    event = _build_event(
+                        path, line_number, envelope, message, usage, cumulative, session_index
+                    )
                 except ValueError:
                     _increment_stat(stats, "invalid_integer")
                     _increment_stat(stats, "skipped_events")
@@ -117,6 +132,7 @@ def _build_event(
     message: dict[str, Any],
     usage: dict[str, Any],
     cumulative: dict[str, int],
+    session_index: dict[str, SessionInfo] | None = None,
 ) -> UsageEvent:
     normal_input = _usage_int(usage, "input_tokens")
     cache_creation = _usage_int(usage, "cache_creation_input_tokens", default=0)
@@ -139,6 +155,8 @@ def _build_event(
     request_id = _optional_str(message.get("id")) or _optional_str(envelope.get("uuid"))
     event_timestamp = _optional_str(envelope.get("timestamp")) or ""
     record_id = _record_id(session_id, request_id, event_timestamp, line_number)
+    session_info = (session_index or {}).get(session_id)
+    effort = session_info.effort if session_info is not None else None
     return UsageEvent(
         record_id=record_id,
         session_id=session_id,
@@ -155,7 +173,7 @@ def _build_event(
         turn_timestamp=event_timestamp or None,
         cwd=_optional_str(envelope.get("cwd")),
         model=_optional_str(message.get("model")),
-        effort=None,
+        effort=effort,
         current_date=None,
         timezone=None,
         thread_source="user",

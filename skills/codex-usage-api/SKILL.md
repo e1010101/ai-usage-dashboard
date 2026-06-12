@@ -1,11 +1,11 @@
 ---
 name: codex-usage-api
-description: Use when the user wants to discuss, investigate, compare, or explain Codex or AI coding-agent usage using the Codex Usage Tracker API or MCP tools.
+description: Use when the user wants to discuss, investigate, compare, or explain Codex or AI coding-agent usage using the AI Usage Dashboard API or MCP tools.
 ---
 
 # Codex Usage API Companion
 
-Use this companion skill as the conversational analyst for Codex Usage Tracker data as it evolves toward AI Usage Tracker. It helps Codex choose the right aggregate-only API calls, interpret the results, and answer the user's usage questions with evidence. Codex is the default source; use source filters when the user asks about Claude Code or cross-source usage.
+Use this companion skill as the conversational analyst for AI Usage Dashboard data as it evolves toward AI Usage Tracker. It helps Codex choose the right aggregate-only API calls, interpret the results, and answer the user's usage questions with evidence. Codex is the default source; use source filters when the user asks about Claude Code or cross-source usage.
 
 ## Privacy Boundary
 
@@ -17,8 +17,8 @@ The only exception is `usage_call_context`, which reads one selected record's lo
 
 ## First Steps
 
-1. For "Open dashboard" or similar dashboard-open requests, do not inspect repository files, plugin manifests, tool registries, git status, or local logs first. Run `codex-usage-tracker open-dashboard --refresh` immediately, then report the opened path or a brief failure. Add `--source all` when the user explicitly asks for all supported sources.
-2. For "Heaviest thread?", "Thread leaderboard", or similar thread-ranking requests, do not inspect repository files, SQLite schemas, plugin manifests, process lists, dashboard servers, or local logs manually. Refresh the aggregate index, then call `usage_summary(group_by="thread", limit=10, response_format="json")`. Use `refresh_usage_index(source="all")` when the user asks across Codex and Claude Code. If MCP tools are unavailable, run `codex-usage-tracker refresh --json` and `codex-usage-tracker summary --group-by thread --limit 10 --json`; add `--source all` for cross-source questions.
+1. For "Open dashboard" or similar dashboard-open requests, do not inspect repository files, plugin manifests, tool registries, git status, or local logs first. Run `ai-usage-dashboard open-dashboard --refresh` immediately, then report the opened path or a brief failure. Add `--source all` when the user explicitly asks for all supported sources.
+2. For "Heaviest thread?", "Thread leaderboard", or similar thread-ranking requests, do not inspect repository files, SQLite schemas, plugin manifests, process lists, dashboard servers, or local logs manually. Refresh the aggregate index, then call `usage_summary(group_by="thread", limit=10, response_format="json")`. Use `refresh_usage_index(source="all")` when the user asks across Codex and Claude Code. If MCP tools are unavailable, run `ai-usage-dashboard refresh --json` and `ai-usage-dashboard summary --group-by thread --limit 10 --json`; add `--source all` for cross-source questions.
 3. For normal usage questions, do not inspect repository files, plugin manifests, or local logs first. Start with the aggregate MCP tools. If MCP tools are unavailable, use the CLI JSON fallback below.
 4. Refresh before analysis with `refresh_usage_index` unless the user asks for a static historical snapshot. Keep archived sessions excluded unless the user explicitly asks for all history. State the source scope in the answer, especially when using `source="all"`.
 5. Use `usage_doctor(response_format="json")` when setup, indexing, pricing, MCP discovery, or dashboard freshness is uncertain.
@@ -31,16 +31,16 @@ The only exception is `usage_call_context`, which reads one selected record's lo
    - `usage_query(...)`
 7. Check the top-level `schema` field before interpreting structured output. Known schema ids are documented in `docs/cli-json-schemas.md`.
 8. If MCP tools are unavailable, fall back to the CLI equivalents:
-   - `codex-usage-tracker refresh --json`
-   - `codex-usage-tracker refresh --source all --json`
-   - `codex-usage-tracker summary --group-by thread --json`
-   - `codex-usage-tracker summary --group-by source_app --json`
-   - `codex-usage-tracker query`
-   - `codex-usage-tracker session --json`
-   - `codex-usage-tracker expensive --json`
-   - `codex-usage-tracker recommendations --json`
-   - `codex-usage-tracker pricing-coverage --json`
-9. If the `codex-usage-tracker` command is missing, run `codex-usage-tracker doctor --suggest-repair --json` only if the command is available through an absolute path or known environment. Otherwise report that the CLI is not on `PATH` and ask the user to run `codex-usage-tracker setup` or reinstall with `pipx`.
+   - `ai-usage-dashboard refresh --json`
+   - `ai-usage-dashboard refresh --source all --json`
+   - `ai-usage-dashboard summary --group-by thread --json`
+   - `ai-usage-dashboard summary --group-by source_app --json`
+   - `ai-usage-dashboard query`
+   - `ai-usage-dashboard session --json`
+   - `ai-usage-dashboard expensive --json`
+   - `ai-usage-dashboard recommendations --json`
+   - `ai-usage-dashboard pricing-coverage --json`
+9. If the `ai-usage-dashboard` command is missing, run `ai-usage-dashboard doctor --suggest-repair --json` only if the command is available through an absolute path or known environment. Otherwise report that the CLI is not on `PATH` and ask the user to run `ai-usage-dashboard setup` or reinstall with `pipx`.
 10. Use source-checkout fallbacks only when you are already inside the repo checkout. On PowerShell, run `$env:PYTHONPATH='src'; .\.venv\Scripts\python.exe -m codex_usage_tracker.cli <command>`. On POSIX shells, run `PYTHONPATH=src .venv/bin/python -m codex_usage_tracker.cli <command>`. Do not use `PYTHONPATH=src` outside that checkout, and do not keep exploring plugin files after a setup failure.
 
 ## Routing Questions To API Calls

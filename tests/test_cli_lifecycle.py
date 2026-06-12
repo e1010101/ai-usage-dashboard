@@ -40,7 +40,7 @@ def test_setup_support_bundle_and_reset_db_cli(tmp_path: Path) -> None:
     )
 
     assert setup.returncode == 0
-    assert "Codex Usage Tracker setup summary" in setup.stdout
+    assert "AI Usage Dashboard setup summary" in setup.stdout
     assert "Restart Codex" in setup.stdout
     assert plugin_dir.exists()
     assert db_path.exists()
@@ -341,6 +341,8 @@ def test_report_json_and_query_cli(tmp_path: Path) -> None:
         "refresh",
         "--codex-home",
         str(codex_home),
+        "--claude-home",
+        str(tmp_path / ".claude"),
         "--json",
     )
     summary = _run_cli(

@@ -446,6 +446,69 @@ def test_claude_statusline_snapshot_round_trips_sanitized_limits(tmp_path: Path)
     assert snapshot.source["captured_at"] == "2026-06-11T00:00:00Z"
 
 
+def test_claude_statusline_snapshot_records_session_effort_meta(tmp_path: Path) -> None:
+    from codex_usage_tracker.dynamic_allowance import load_claude_session_meta
+
+    path = tmp_path / "claude-limits.json"
+
+    write_claude_statusline_snapshot(
+        {
+            "session_id": "claude-session-1",
+            "effort": {"level": "xhigh"},
+            "model": {"id": "claude-fable-5"},
+            "rate_limits": {
+                "five_hour": {"used_percentage": 25, "resets_at": 1774686045},
+            },
+        },
+        path=path,
+        captured_at="2026-06-12T00:00:00Z",
+    )
+
+    meta_path = tmp_path / "claude-session-meta.json"
+    raw = json.loads(meta_path.read_text(encoding="utf-8"))
+    sessions = load_claude_session_meta(meta_path)
+
+    assert raw["schema"] == "codex-usage-tracker-claude-session-meta-v1"
+    assert sessions["claude-session-1"]["effort"] == "xhigh"
+    assert sessions["claude-session-1"]["model"] == "claude-fable-5"
+    assert sessions["claude-session-1"]["captured_at"] == "2026-06-12T00:00:00Z"
+
+
+def test_update_claude_session_meta_merges_and_skips_blank_payloads(tmp_path: Path) -> None:
+    from codex_usage_tracker.dynamic_allowance import (
+        load_claude_session_meta,
+        update_claude_session_meta,
+    )
+
+    path = tmp_path / "claude-session-meta.json"
+
+    first = update_claude_session_meta(
+        {"session_id": "session-a", "effort": {"level": "high"}},
+        path=path,
+        captured_at="2026-06-12T00:00:00Z",
+    )
+    second = update_claude_session_meta(
+        {"session_id": "session-b", "model": {"id": "claude-fable-5"}},
+        path=path,
+        captured_at="2026-06-12T00:01:00Z",
+    )
+    skipped_no_session = update_claude_session_meta(
+        {"effort": {"level": "high"}}, path=path
+    )
+    skipped_no_fields = update_claude_session_meta(
+        {"session_id": "session-c"}, path=path
+    )
+    sessions = load_claude_session_meta(path)
+
+    assert first == path
+    assert second == path
+    assert skipped_no_session is None
+    assert skipped_no_fields is None
+    assert sessions["session-a"]["effort"] == "high"
+    assert sessions["session-b"]["model"] == "claude-fable-5"
+    assert "session-c" not in sessions
+
+
 def test_parse_allowance_text_reads_status_percentages() -> None:
     windows = parse_allowance_text(
         """

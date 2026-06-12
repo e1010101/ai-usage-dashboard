@@ -10,6 +10,11 @@ from pathlib import Path
 from codex_usage_tracker.cli import _COMMAND_HANDLERS
 from codex_usage_tracker.json_contracts import known_json_schemas
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10.
+    import tomli as tomllib
+
 
 def test_module_cli_version() -> None:
     result = subprocess.run(
@@ -20,7 +25,19 @@ def test_module_cli_version() -> None:
         env=_subprocess_env(),
     )
 
-    assert "codex-usage-tracker 0.2.0" in result.stdout
+    assert "ai-usage-dashboard 0.2.0" in result.stdout
+
+
+def test_startup_command_matches_repo_name() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    pyproject = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
+    scripts = pyproject["project"]["scripts"]
+    mcp_config = json.loads((repo_root / ".mcp.json").read_text(encoding="utf-8"))
+
+    assert scripts["ai-usage-dashboard"] == "codex_usage_tracker.cli:main"
+    assert "codex-usage-tracker" not in scripts
+    assert "ai-usage-dashboard" in mcp_config["mcpServers"]
+    assert "codex-usage-tracker" not in mcp_config["mcpServers"]
 
 
 def test_release_check_script_passes() -> None:
@@ -36,7 +53,7 @@ def test_release_check_script_passes() -> None:
     assert "Release readiness checks passed." in result.stdout
 
 
-def test_readme_codex_usage_tracker_commands_reference_known_subcommands() -> None:
+def test_readme_ai_usage_dashboard_commands_reference_known_subcommands() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     readme = repo_root / "README.md"
     commands = set(_COMMAND_HANDLERS)
@@ -45,7 +62,7 @@ def test_readme_codex_usage_tracker_commands_reference_known_subcommands() -> No
 
     for raw_line in readme.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
-        if not line.startswith("codex-usage-tracker"):
+        if not line.startswith("ai-usage-dashboard"):
             continue
         tokens = shlex.split(line)
         command = next((token for token in tokens[1:] if token in commands), None)

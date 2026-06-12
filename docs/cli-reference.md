@@ -7,16 +7,16 @@ This page lists the common command-line workflows. For tested JSON contract ids,
 Refresh the local aggregate index:
 
 ```bash
-codex-usage-tracker refresh
-codex-usage-tracker refresh --source all
-codex-usage-tracker refresh --source claude-code --claude-home ~/.claude
+ai-usage-dashboard refresh
+ai-usage-dashboard refresh --source all
+ai-usage-dashboard refresh --source claude-code --claude-home ~/.claude
 ```
 
 Rebuild the local aggregate index after parser or schema changes:
 
 ```bash
-codex-usage-tracker rebuild-index
-codex-usage-tracker rebuild-index --source all
+ai-usage-dashboard rebuild-index
+ai-usage-dashboard rebuild-index --source all
 ```
 
 `refresh` defaults to the Codex source at `~/.codex/sessions`. `--source claude-code` scans Claude Code JSONL files under `~/.claude/projects`, and `--source all` scans every supported source. `rebuild-index` clears only the local aggregate `usage_events` and refresh metadata tables, then rescans the selected local sources.
@@ -24,9 +24,9 @@ codex-usage-tracker rebuild-index --source all
 Inspect one source log without writing to SQLite:
 
 ```bash
-codex-usage-tracker inspect-log ~/.codex/sessions/YYYY/MM/DD/rollout-...jsonl
-codex-usage-tracker inspect-log ~/.codex/sessions/YYYY/MM/DD/rollout-...jsonl --json
-codex-usage-tracker inspect-log ~/.claude/projects/<project>/<session>.jsonl --json
+ai-usage-dashboard inspect-log ~/.codex/sessions/YYYY/MM/DD/rollout-...jsonl
+ai-usage-dashboard inspect-log ~/.codex/sessions/YYYY/MM/DD/rollout-...jsonl --json
+ai-usage-dashboard inspect-log ~/.claude/projects/<project>/<session>.jsonl --json
 ```
 
 `inspect-log` reports parser adapter, aggregate token-count events, session ids, models, and parser diagnostics. It does not store raw prompts, assistant messages, tool output, or transcript snippets.
@@ -34,12 +34,12 @@ codex-usage-tracker inspect-log ~/.claude/projects/<project>/<session>.jsonl --j
 ## Dashboard
 
 ```bash
-codex-usage-tracker dashboard --open
-codex-usage-tracker dashboard --include-archived --open
-codex-usage-tracker open-dashboard
-codex-usage-tracker serve-dashboard --open
-codex-usage-tracker serve-dashboard --source all --open
-codex-usage-tracker serve-dashboard --no-context-api --open
+ai-usage-dashboard dashboard --open
+ai-usage-dashboard dashboard --include-archived --open
+ai-usage-dashboard open-dashboard
+ai-usage-dashboard serve-dashboard --open
+ai-usage-dashboard serve-dashboard --source all --open
+ai-usage-dashboard serve-dashboard --no-context-api --open
 ```
 
 `serve-dashboard --context-api explicit` is the default and keeps context loading as an explicit per-row action. `serve-dashboard --no-context-api` or `--context-api disabled` serves live aggregate refresh while disabling `/api/context` entirely.
@@ -48,24 +48,24 @@ Dashboards default to active sessions only. Use `--include-archived` for an all-
 
 The localhost `/api/usage` endpoint accepts `limit` and `offset` query parameters, so automation can page aggregate rows without asking the server to load an entire large history at once.
 
-Claude Code remaining limits appear on the Claude Code tab when `~/.codex-usage-tracker/claude-limits.json` exists. Run `codex-usage-tracker install-claude-limits-statusline` once to configure Claude Code to keep that snapshot filled automatically.
+Claude Code remaining limits appear on the Claude Code tab when `~/.codex-usage-tracker/claude-limits.json` exists. Run `ai-usage-dashboard install-claude-limits-statusline` once to configure Claude Code to keep that snapshot filled automatically.
 
 ## Summaries
 
 ```bash
-codex-usage-tracker summary --group-by model
-codex-usage-tracker summary --group-by source_app
-codex-usage-tracker summary --group-by source_provider
-codex-usage-tracker summary --group-by project
-codex-usage-tracker summary --group-by project_tag
-codex-usage-tracker summary --group-by thread --limit 20
-codex-usage-tracker summary --preset today
-codex-usage-tracker summary --preset last-7-days
-codex-usage-tracker summary --preset expensive
-codex-usage-tracker summary --preset by-subagent-role
-codex-usage-tracker expensive --limit 10
-codex-usage-tracker recommendations --limit 10
-codex-usage-tracker pricing-coverage
+ai-usage-dashboard summary --group-by model
+ai-usage-dashboard summary --group-by source_app
+ai-usage-dashboard summary --group-by source_provider
+ai-usage-dashboard summary --group-by project
+ai-usage-dashboard summary --group-by project_tag
+ai-usage-dashboard summary --group-by thread --limit 20
+ai-usage-dashboard summary --preset today
+ai-usage-dashboard summary --preset last-7-days
+ai-usage-dashboard summary --preset expensive
+ai-usage-dashboard summary --preset by-subagent-role
+ai-usage-dashboard expensive --limit 10
+ai-usage-dashboard recommendations --limit 10
+ai-usage-dashboard pricing-coverage
 ```
 
 Useful investigations:
@@ -82,14 +82,14 @@ Useful investigations:
 ## JSON Queries
 
 ```bash
-codex-usage-tracker query --since 2026-06-01 --project codex-usage-tracker --min-credits 1
-codex-usage-tracker query --source-app claude-code
-codex-usage-tracker query --source-provider anthropic --limit 0
-codex-usage-tracker query --pricing-status unpriced --limit 0
-codex-usage-tracker recommendations --since 2026-06-01 --json
-codex-usage-tracker recommendations --source-app codex --json
-codex-usage-tracker summary --group-by model --json
-codex-usage-tracker session <session-id> --json
+ai-usage-dashboard query --since 2026-06-01 --project ai-usage-dashboard --min-credits 1
+ai-usage-dashboard query --source-app claude-code
+ai-usage-dashboard query --source-provider anthropic --limit 0
+ai-usage-dashboard query --pricing-status unpriced --limit 0
+ai-usage-dashboard recommendations --since 2026-06-01 --json
+ai-usage-dashboard recommendations --source-app codex --json
+ai-usage-dashboard summary --group-by model --json
+ai-usage-dashboard session <session-id> --json
 ```
 
 Use `query` when you need stable JSON for automation across source provider/app, project, model, effort, thread, pricing, token, or credit filters.
@@ -99,13 +99,13 @@ Use `query` when you need stable JSON for automation across source provider/app,
 Show one session:
 
 ```bash
-codex-usage-tracker session <session-id>
+ai-usage-dashboard session <session-id>
 ```
 
 Load one call's logged context on demand:
 
 ```bash
-codex-usage-tracker context <record-id>
+ai-usage-dashboard context <record-id>
 ```
 
 Raw context is read from the original local JSONL source only when explicitly requested. It is not written to SQLite, CSV, or generated dashboard HTML.
@@ -113,8 +113,8 @@ Raw context is read from the original local JSONL source only when explicitly re
 ## Export
 
 ```bash
-codex-usage-tracker export --output usage.csv
-codex-usage-tracker export --output usage.csv --limit 0
+ai-usage-dashboard export --output usage.csv
+ai-usage-dashboard export --output usage.csv --limit 0
 ```
 
 Use `--privacy-mode redacted` or `--privacy-mode strict` before sharing CSV output.
@@ -122,16 +122,16 @@ Use `--privacy-mode redacted` or `--privacy-mode strict` before sharing CSV outp
 ## Local Config
 
 ```bash
-codex-usage-tracker update-pricing
-codex-usage-tracker pin-pricing --output ~/.codex-usage-tracker/pricing-2026-06-05.json
-codex-usage-tracker init-pricing
-codex-usage-tracker update-rate-card
-codex-usage-tracker init-allowance
-codex-usage-tracker parse-allowance "5h 79% 6:50 PM Weekly 33% Jun 7"
-codex-usage-tracker install-claude-limits-statusline
-codex-usage-tracker capture-claude-limits --quiet
-codex-usage-tracker init-thresholds
-codex-usage-tracker init-projects
+ai-usage-dashboard update-pricing
+ai-usage-dashboard pin-pricing --output ~/.codex-usage-tracker/pricing-2026-06-05.json
+ai-usage-dashboard init-pricing
+ai-usage-dashboard update-rate-card
+ai-usage-dashboard init-allowance
+ai-usage-dashboard parse-allowance "5h 79% 6:50 PM Weekly 33% Jun 7"
+ai-usage-dashboard install-claude-limits-statusline
+ai-usage-dashboard capture-claude-limits --quiet
+ai-usage-dashboard init-thresholds
+ai-usage-dashboard init-projects
 ```
 
 Local config files live under `~/.codex-usage-tracker/` and are never committed by this project.
@@ -147,9 +147,9 @@ Local config files live under `~/.codex-usage-tracker/` and are never committed 
 `--privacy-mode` is a global option, so place it before the subcommand:
 
 ```bash
-codex-usage-tracker --privacy-mode redacted dashboard --open
-codex-usage-tracker --privacy-mode strict export --output usage-redacted.csv
-codex-usage-tracker --privacy-mode strict query --since 2026-06-01
+ai-usage-dashboard --privacy-mode redacted dashboard --open
+ai-usage-dashboard --privacy-mode strict export --output usage-redacted.csv
+ai-usage-dashboard --privacy-mode strict query --since 2026-06-01
 ```
 
 `normal` keeps local project metadata visible. `redacted` hides raw `cwd` and source paths, hides Git remote labels, and replaces unnamed projects with stable hashed labels. `strict` also hides project-relative cwd, Git branch, and project tags.

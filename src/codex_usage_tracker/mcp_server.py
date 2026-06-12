@@ -54,7 +54,7 @@ mcp = FastMCP("codex-usage-tracker")
 
 @mcp.tool()
 def refresh_usage_index(
-    source: str = "codex",
+    source: str = "all",
     include_archived: bool = False,
 ) -> dict[str, Any]:
     """Scan local usage logs and upsert aggregate usage metrics into SQLite."""

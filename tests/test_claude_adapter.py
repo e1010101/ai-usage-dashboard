@@ -121,6 +121,47 @@ def test_claude_adapter_dedupes_repeated_request_snapshots(tmp_path: Path) -> No
     assert stats["duplicate_record"] == 1
 
 
+def test_claude_adapter_stamps_effort_from_session_meta(tmp_path: Path) -> None:
+    claude_home = _make_claude_home(tmp_path)
+    meta_path = tmp_path / "claude-session-meta.json"
+    meta_path.write_text(
+        json.dumps(
+            {
+                "schema": "codex-usage-tracker-claude-session-meta-v1",
+                "sessions": {
+                    "claude-session-1": {
+                        "effort": "xhigh",
+                        "model": "claude-sonnet-4-20250514",
+                        "captured_at": "2026-06-12T00:00:00Z",
+                    }
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    adapter = ClaudeCodeJsonlAdapter(session_meta_path=meta_path)
+    logs = adapter.discover_logs(claude_home)
+    session_index = adapter.load_session_index(claude_home)
+
+    events = adapter.parse_file(logs[0], session_index=session_index)
+
+    assert session_index["claude-session-1"].effort == "xhigh"
+    assert all(event.effort == "xhigh" for event in events)
+
+
+def test_claude_adapter_leaves_effort_unset_without_session_meta(tmp_path: Path) -> None:
+    claude_home = _make_claude_home(tmp_path)
+    adapter = ClaudeCodeJsonlAdapter(session_meta_path=tmp_path / "missing-meta.json")
+    logs = adapter.discover_logs(claude_home)
+    session_index = adapter.load_session_index(claude_home)
+
+    events = adapter.parse_file(logs[0], session_index=session_index)
+
+    assert session_index == {}
+    assert all(event.effort is None for event in events)
+
+
 def test_claude_log_discovery_uses_projects_tree(tmp_path: Path) -> None:
     claude_home = _make_claude_home(tmp_path)
     adapter = ClaudeCodeJsonlAdapter()

@@ -10,9 +10,14 @@ from typing import Any
 
 from codex_usage_tracker.adapters.codex_jsonl import find_session_logs
 from codex_usage_tracker.allowance import AllowanceWindow, parse_windows
-from codex_usage_tracker.paths import DEFAULT_CLAUDE_LIMITS_PATH
+from codex_usage_tracker.paths import (
+    DEFAULT_CLAUDE_LIMITS_PATH,
+    DEFAULT_CLAUDE_SESSION_META_PATH,
+)
 
 CLAUDE_LIMITS_SCHEMA = "codex-usage-tracker-claude-limits-v1"
+CLAUDE_SESSION_META_SCHEMA = "codex-usage-tracker-claude-session-meta-v1"
+_CLAUDE_SESSION_META_MAX_ENTRIES = 2000
 
 
 @dataclass(frozen=True)
@@ -170,6 +175,11 @@ def write_claude_statusline_snapshot(
     if not isinstance(statusline_payload, dict):
         raise ValueError("Claude status-line payload must be a JSON object")
     captured = captured_at or _utc_now()
+    update_claude_session_meta(
+        statusline_payload,
+        path=path.expanduser().with_name(DEFAULT_CLAUDE_SESSION_META_PATH.name),
+        captured_at=captured,
+    )
     windows = parse_claude_rate_limit_windows(
         statusline_payload.get("rate_limits"),
         event_timestamp=captured,
@@ -205,6 +215,105 @@ def write_claude_statusline_snapshot(
     return output
 
 
+def update_claude_session_meta(
+    statusline_payload: object,
+    *,
+    path: Path = DEFAULT_CLAUDE_SESSION_META_PATH,
+    captured_at: str | None = None,
+) -> Path | None:
+    """Record per-session effort and model from a Claude statusLine payload.
+
+    Claude Code transcripts do not include the effort level, so the statusLine
+    payload is the only local source; the map keyed by session id lets the
+    Claude adapter stamp effort onto ingested usage events.
+    """
+
+    if not isinstance(statusline_payload, dict):
+        return None
+    session_id = _optional_str(statusline_payload.get("session_id"))
+    if not session_id:
+        return None
+    effort_raw = statusline_payload.get("effort")
+    effort = _optional_str(effort_raw.get("level")) if isinstance(effort_raw, dict) else None
+    model_raw = statusline_payload.get("model")
+    model = _optional_str(model_raw.get("id")) if isinstance(model_raw, dict) else None
+    if effort is None and model is None:
+        return None
+
+    expanded = path.expanduser()
+    sessions: dict[str, Any] = {}
+    try:
+        raw = json.loads(expanded.read_text(encoding="utf-8"))
+        if isinstance(raw, dict) and raw.get("schema") in (None, CLAUDE_SESSION_META_SCHEMA):
+            existing = raw.get("sessions")
+            if isinstance(existing, dict):
+                sessions = {
+                    key: value
+                    for key, value in existing.items()
+                    if isinstance(key, str) and isinstance(value, dict)
+                }
+    except (OSError, json.JSONDecodeError):
+        sessions = {}
+
+    entry: dict[str, Any] = {"captured_at": captured_at or _utc_now()}
+    if effort is not None:
+        entry["effort"] = effort
+    if model is not None:
+        entry["model"] = model
+    sessions[session_id] = entry
+    if len(sessions) > _CLAUDE_SESSION_META_MAX_ENTRIES:
+        ordered = sorted(
+            sessions.items(),
+            key=lambda item: str(item[1].get("captured_at") or ""),
+        )
+        for key, _ in ordered[: len(sessions) - _CLAUDE_SESSION_META_MAX_ENTRIES]:
+            del sessions[key]
+
+    payload = {
+        "schema": CLAUDE_SESSION_META_SCHEMA,
+        "provider": "anthropic",
+        "app": "claude-code",
+        "note": (
+            "Per-session effort and model captured from Claude Code statusLine JSON; "
+            "raw transcript content and status-line input are not persisted."
+        ),
+        "sessions": sessions,
+    }
+    try:
+        expanded.parent.mkdir(parents=True, exist_ok=True)
+        expanded.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except OSError:
+        return None
+    return expanded
+
+
+def load_claude_session_meta(
+    path: Path = DEFAULT_CLAUDE_SESSION_META_PATH,
+) -> dict[str, dict[str, Any]]:
+    """Read the per-session effort/model map captured from Claude statusLine."""
+
+    expanded = path.expanduser()
+    if not expanded.exists():
+        return {}
+    try:
+        raw = json.loads(expanded.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    schema = raw.get("schema")
+    if schema and schema != CLAUDE_SESSION_META_SCHEMA:
+        return {}
+    sessions = raw.get("sessions")
+    if not isinstance(sessions, dict):
+        return {}
+    return {
+        key: value
+        for key, value in sessions.items()
+        if isinstance(key, str) and isinstance(value, dict)
+    }
+
+
 def load_dynamic_claude_limit_snapshot(
     path: Path = DEFAULT_CLAUDE_LIMITS_PATH,
 ) -> DynamicAllowanceSnapshot:
@@ -221,7 +330,8 @@ def load_dynamic_claude_limit_snapshot(
         if schema and schema != CLAUDE_LIMITS_SCHEMA:
             raise ValueError(f"unsupported Claude limit snapshot schema: {schema}")
         windows = parse_windows(raw.get("windows", []))
-        source = raw.get("source") if isinstance(raw.get("source"), dict) else {}
+        raw_source = raw.get("source")
+        source: dict[str, Any] = raw_source if isinstance(raw_source, dict) else {}
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         return DynamicAllowanceSnapshot(windows=[], source={}, error=str(exc))
     return DynamicAllowanceSnapshot(windows=windows, source=source if windows else {})
@@ -247,7 +357,7 @@ def _optional_positive_number(value: object) -> float | None:
 
 
 def _optional_reset_timestamp(value: object) -> str | None:
-    if isinstance(value, bool) or value is None:
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
         return None
     try:
         return datetime.fromtimestamp(float(value), tz=timezone.utc).replace(

@@ -1,6 +1,6 @@
 # Privacy Guide
 
-Codex Usage Tracker is designed around aggregate local analysis for local AI coding-agent usage. It reads supported source logs already written on your machine and avoids storing raw transcript content.
+AI Usage Dashboard is designed around aggregate local analysis for local AI coding-agent usage. It reads supported source logs already written on your machine and avoids storing raw transcript content.
 
 ## Stored In SQLite
 
@@ -29,16 +29,16 @@ Claude Code support follows the same aggregate-only rule. The indexer reads loca
 
 Codex Usage Remaining support reads only local Codex JSONL `payload.rate_limits` metadata on token-count events. It uses the latest account-level snapshot to populate 5-hour and weekly remaining windows in dashboard payloads. It does not read prompts, assistant text, tool output, or raw message content, and it does not write these dynamic windows to SQLite by default.
 
-Claude Remaining support reads a sanitized local snapshot written by the Claude Code status-line wrapper installed by `codex-usage-tracker install-claude-limits-statusline`. The snapshot stores only provider identity, remaining percentages, reset timestamps, and source metadata. It does not persist the full status-line JSON, transcript path, prompts, assistant messages, or tool output.
+Claude Remaining support reads a sanitized local snapshot written by the Claude Code status-line wrapper installed by `ai-usage-dashboard install-claude-limits-statusline`. The snapshot stores only provider identity, remaining percentages, reset timestamps, and source metadata. It does not persist the full status-line JSON, transcript path, prompts, assistant messages, or tool output.
 
 ## On-Demand Context
 
-`usage_call_context`, `codex-usage-tracker context`, and the `serve-dashboard` context endpoint read a single source JSONL file only when explicitly requested. Returned context is redacted for common secret patterns and capped in size.
+`usage_call_context`, `ai-usage-dashboard context`, and the `serve-dashboard` context endpoint read a single source JSONL file only when explicitly requested. Returned context is redacted for common secret patterns and capped in size.
 
 The context API can be disabled:
 
 ```bash
-codex-usage-tracker serve-dashboard --no-context-api --open
+ai-usage-dashboard serve-dashboard --no-context-api --open
 ```
 
 For MCP users, `usage_call_context` is additionally disabled unless the MCP server process has this environment variable:
@@ -64,9 +64,9 @@ The localhost server:
 Use `--privacy-mode` before the subcommand:
 
 ```bash
-codex-usage-tracker --privacy-mode redacted dashboard --open
-codex-usage-tracker --privacy-mode strict export --output usage-redacted.csv
-codex-usage-tracker --privacy-mode strict query --since 2026-06-01
+ai-usage-dashboard --privacy-mode redacted dashboard --open
+ai-usage-dashboard --privacy-mode strict export --output usage-redacted.csv
+ai-usage-dashboard --privacy-mode strict query --since 2026-06-01
 ```
 
 `normal` keeps local project metadata visible.
@@ -83,7 +83,7 @@ Cost estimates are calculated only from aggregate token fields and your local pr
 
 Codex credit estimates are calculated only from aggregate token fields and bundled or locally configured rate-card values. They apply only to Codex/OpenAI rows; Claude Code and other non-Codex rows are marked `not_applicable` for credit confidence.
 
-Dynamic Usage Remaining reads local Codex rate-limit metadata when present. The optional allowance config is local and stores only the remaining percentages, reset times, or credit totals you manually enter. Manual allowance values can override dynamic Codex windows. Claude Code remaining limits are read only from the sanitized local status-line snapshot after you run `codex-usage-tracker install-claude-limits-statusline`.
+Dynamic Usage Remaining reads local Codex rate-limit metadata when present. The optional allowance config is local and stores only the remaining percentages, reset times, or credit totals you manually enter. Manual allowance values can override dynamic Codex windows. Claude Code remaining limits are read only from the sanitized local status-line snapshot after you run `ai-usage-dashboard install-claude-limits-statusline`.
 
 ## Sharing Checklist
 

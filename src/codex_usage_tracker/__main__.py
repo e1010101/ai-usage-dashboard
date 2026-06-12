@@ -1,4 +1,4 @@
-"""Run the Codex Usage Tracker CLI with `python -m codex_usage_tracker`."""
+"""Run the AI Usage Dashboard CLI with `python -m codex_usage_tracker`."""
 
 from codex_usage_tracker.cli import main
 

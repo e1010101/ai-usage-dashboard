@@ -11,7 +11,7 @@ from codex_usage_tracker.plugin_installer import install_plugin, uninstall_plugi
 
 
 def test_install_plugin_writes_generated_wrapper_and_marketplace(tmp_path: Path) -> None:
-    plugin_dir = tmp_path / "plugins" / "codex-usage-tracker"
+    plugin_dir = tmp_path / "plugins" / "ai-usage-dashboard"
     marketplace_path = tmp_path / "marketplace.json"
     python_path = tmp_path / ".venv" / "bin" / "python"
 
@@ -33,8 +33,10 @@ def test_install_plugin_writes_generated_wrapper_and_marketplace(tmp_path: Path)
     assert result.plugin_dir == plugin_dir
     assert result.replaced_existing is False
     assert second.replaced_existing is False
-    assert manifest["name"] == "codex-usage-tracker"
+    assert manifest["name"] == "ai-usage-dashboard"
     assert manifest["version"] == "0.2.0"
+    assert manifest["repository"] == "https://github.com/e1010101/ai-usage-dashboard"
+    assert manifest["interface"]["displayName"] == "AI Usage Dashboard"
     assert manifest["interface"]["defaultPrompt"][:3] == [
         "Open dashboard",
         "Heaviest thread?",
@@ -43,14 +45,14 @@ def test_install_plugin_writes_generated_wrapper_and_marketplace(tmp_path: Path)
     assert (plugin_dir / "assets" / "icon.svg").exists()
     assert (plugin_dir / "skills" / "codex-usage-api" / "SKILL.md").exists()
     assert (plugin_dir / "skills" / "codex-usage-tracker" / "SKILL.md").exists()
-    assert mcp_config["mcpServers"]["codex-usage-tracker"]["command"] == str(python_path)
-    assert mcp_config["mcpServers"]["codex-usage-tracker"]["args"] == [
+    assert mcp_config["mcpServers"]["ai-usage-dashboard"]["command"] == str(python_path)
+    assert mcp_config["mcpServers"]["ai-usage-dashboard"]["args"] == [
         "-m",
         "codex_usage_tracker.mcp_server",
     ]
     assert marketplace["plugins"] == [
         {
-            "name": "codex-usage-tracker",
+            "name": "ai-usage-dashboard",
             "source": {"source": "local", "path": str(plugin_dir.resolve())},
             "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
             "category": "Productivity",
@@ -59,7 +61,7 @@ def test_install_plugin_writes_generated_wrapper_and_marketplace(tmp_path: Path)
 
 
 def test_install_plugin_refuses_non_plugin_path_without_force(tmp_path: Path) -> None:
-    plugin_dir = tmp_path / "plugins" / "codex-usage-tracker"
+    plugin_dir = tmp_path / "plugins" / "ai-usage-dashboard"
     plugin_dir.mkdir(parents=True)
     (plugin_dir / "README.md").write_text("not a generated plugin", encoding="utf-8")
 
@@ -68,7 +70,7 @@ def test_install_plugin_refuses_non_plugin_path_without_force(tmp_path: Path) ->
 
 
 def test_install_plugin_refuses_different_plugin_manifest(tmp_path: Path) -> None:
-    plugin_dir = tmp_path / "plugins" / "codex-usage-tracker"
+    plugin_dir = tmp_path / "plugins" / "ai-usage-dashboard"
     (plugin_dir / ".codex-plugin").mkdir(parents=True)
     (plugin_dir / ".codex-plugin" / "plugin.json").write_text(
         json.dumps({"name": "different-plugin"}),
@@ -81,7 +83,7 @@ def test_install_plugin_refuses_different_plugin_manifest(tmp_path: Path) -> Non
 
 def test_install_plugin_preserves_requested_relative_python(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    plugin_dir = tmp_path / "plugins" / "codex-usage-tracker"
+    plugin_dir = tmp_path / "plugins" / "ai-usage-dashboard"
     install_plugin(
         plugin_dir=plugin_dir,
         marketplace_path=tmp_path / "marketplace.json",
@@ -90,7 +92,7 @@ def test_install_plugin_preserves_requested_relative_python(tmp_path: Path, monk
 
     mcp_config = json.loads((plugin_dir / ".mcp.json").read_text())
 
-    assert mcp_config["mcpServers"]["codex-usage-tracker"]["command"] == str(
+    assert mcp_config["mcpServers"]["ai-usage-dashboard"]["command"] == str(
         tmp_path / ".venv" / "bin" / "python"
     )
 
@@ -100,7 +102,7 @@ def test_install_plugin_adds_pythonpath_for_source_checkout_venv(tmp_path: Path)
     python_path = repo_root / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     (repo_root / "src" / "codex_usage_tracker").mkdir(parents=True)
     (repo_root / "pyproject.toml").write_text("[project]\nname = 'sample'\n", encoding="utf-8")
-    plugin_dir = tmp_path / "plugins" / "codex-usage-tracker"
+    plugin_dir = tmp_path / "plugins" / "ai-usage-dashboard"
 
     install_plugin(
         plugin_dir=plugin_dir,
@@ -109,7 +111,7 @@ def test_install_plugin_adds_pythonpath_for_source_checkout_venv(tmp_path: Path)
     )
 
     mcp_config = json.loads((plugin_dir / ".mcp.json").read_text())
-    server = mcp_config["mcpServers"]["codex-usage-tracker"]
+    server = mcp_config["mcpServers"]["ai-usage-dashboard"]
 
     assert server["env"] == {"PYTHONPATH": str(repo_root / "src")}
 
@@ -117,7 +119,7 @@ def test_install_plugin_adds_pythonpath_for_source_checkout_venv(tmp_path: Path)
 def test_install_plugin_force_replaces_existing_symlink(tmp_path: Path) -> None:
     source_plugin = tmp_path / "source"
     source_plugin.mkdir()
-    plugin_dir = tmp_path / "plugins" / "codex-usage-tracker"
+    plugin_dir = tmp_path / "plugins" / "ai-usage-dashboard"
     plugin_dir.parent.mkdir()
     _symlink_or_skip(plugin_dir, source_plugin)
 
@@ -135,7 +137,7 @@ def test_install_plugin_force_replaces_existing_symlink(tmp_path: Path) -> None:
 
 
 def test_uninstall_plugin_removes_only_tracker_wrapper_and_marketplace_entry(tmp_path: Path) -> None:
-    plugin_dir = tmp_path / "plugins" / "codex-usage-tracker"
+    plugin_dir = tmp_path / "plugins" / "ai-usage-dashboard"
     marketplace_path = tmp_path / "marketplace.json"
     install_plugin(
         plugin_dir=plugin_dir,
@@ -153,7 +155,7 @@ def test_uninstall_plugin_removes_only_tracker_wrapper_and_marketplace_entry(tmp
 
 
 def test_uninstall_plugin_refuses_unrelated_path(tmp_path: Path) -> None:
-    plugin_dir = tmp_path / "plugins" / "codex-usage-tracker"
+    plugin_dir = tmp_path / "plugins" / "ai-usage-dashboard"
     plugin_dir.mkdir(parents=True)
     (plugin_dir / "README.md").write_text("not a generated plugin", encoding="utf-8")
 
@@ -162,7 +164,7 @@ def test_uninstall_plugin_refuses_unrelated_path(tmp_path: Path) -> None:
 
 
 def test_doctor_accepts_generated_plugin_directory(tmp_path: Path) -> None:
-    plugin_dir = tmp_path / "plugins" / "codex-usage-tracker"
+    plugin_dir = tmp_path / "plugins" / "ai-usage-dashboard"
     marketplace_path = tmp_path / "marketplace.json"
     python_path = _fake_python(tmp_path)
     install_plugin(
@@ -190,7 +192,7 @@ def test_doctor_accepts_generated_plugin_directory(tmp_path: Path) -> None:
 
 
 def test_doctor_detects_mcp_python_that_cannot_import_server(tmp_path: Path) -> None:
-    plugin_dir = tmp_path / "plugins" / "codex-usage-tracker"
+    plugin_dir = tmp_path / "plugins" / "ai-usage-dashboard"
     marketplace_path = tmp_path / "marketplace.json"
     python_path = _fake_python(tmp_path, exit_code=1)
     install_plugin(
@@ -214,7 +216,10 @@ def test_doctor_detects_mcp_python_that_cannot_import_server(tmp_path: Path) -> 
     assert report["status"] == "fail"
     assert checks["MCP runtime"]["status"] == "fail"
     assert "cannot import the server" in checks["MCP runtime"]["detail"]
-    assert any("install-plugin --python .venv/bin/python --force" in suggestion for suggestion in report["repair_suggestions"])
+    assert any(
+        "ai-usage-dashboard install-plugin --python .venv/bin/python --force" in suggestion
+        for suggestion in report["repair_suggestions"]
+    )
 
 
 def _fake_python(tmp_path: Path, *, exit_code: int = 0) -> Path:

@@ -1,6 +1,6 @@
 # Dashboard Guide
 
-> **Unofficial project:** Codex Usage Tracker is independent and is not made by, affiliated with, endorsed by, sponsored by, or supported by OpenAI. OpenAI and Codex are trademarks of OpenAI.
+> **Unofficial project:** AI Usage Dashboard is independent and is not made by, affiliated with, endorsed by, sponsored by, or supported by OpenAI. OpenAI and Codex are trademarks of OpenAI.
 
 This guide uses synthetic aggregate data. The screenshots do not contain prompts, assistant text, tool output, or real Codex or Claude Code session content.
 
@@ -11,39 +11,39 @@ This guide uses synthetic aggregate data. The screenshots do not contain prompts
 For the best experience, run the localhost dashboard server:
 
 ```bash
-codex-usage-tracker setup
-codex-usage-tracker update-pricing
-codex-usage-tracker update-rate-card
-codex-usage-tracker refresh --source all
-codex-usage-tracker serve-dashboard --source all --open
+ai-usage-dashboard setup
+ai-usage-dashboard update-pricing
+ai-usage-dashboard update-rate-card
+ai-usage-dashboard refresh --source all
+ai-usage-dashboard serve-dashboard --source all --open
 ```
 
-Use `codex-usage-tracker serve-dashboard --open` for the default Codex-only dashboard. Use `--source claude-code --claude-home ~/.claude` for a Claude Code-only dashboard.
+Use `ai-usage-dashboard serve-dashboard --open` for the default Codex-only dashboard. Use `--source claude-code --claude-home ~/.claude` for a Claude Code-only dashboard.
 
 `Codex Remaining` is populated from local Codex JSONL `rate_limits` snapshots when available. For optional manual allowance context, initialize a local template and copy values from Codex Usage or `/status`:
 
 ```bash
-codex-usage-tracker init-allowance
-codex-usage-tracker parse-allowance "5h 79% 6:50 PM Weekly 33% Jun 7"
+ai-usage-dashboard init-allowance
+ai-usage-dashboard parse-allowance "5h 79% 6:50 PM Weekly 33% Jun 7"
 ```
 
 `Claude Remaining` on the Claude Code tab is populated from a sanitized Claude Code status-line snapshot. Claude Code sends `rate_limits` to status-line commands after API responses for plans that expose those limits. To capture those values without storing transcript text, install the tracker wrapper once:
 
 ```bash
-codex-usage-tracker install-claude-limits-statusline
+ai-usage-dashboard install-claude-limits-statusline
 ```
 
 The installer updates `~/.claude/settings.json`. If you already have a custom Claude status line, it wraps and preserves that command and writes a backup before changing the file. The installed wrapper reads Claude Code's status-line JSON from stdin and writes only provider, window percentages, reset timestamps, and source metadata to `~/.codex-usage-tracker/claude-limits.json`.
 
-To tune review thresholds locally, run `codex-usage-tracker init-thresholds` and edit `~/.codex-usage-tracker/thresholds.json`. These thresholds control low-cache, high-context, high-uncached-input, large-thread, reasoning-spike, low-output, and high-cost recommendations.
+To tune review thresholds locally, run `ai-usage-dashboard init-thresholds` and edit `~/.codex-usage-tracker/thresholds.json`. These thresholds control low-cache, high-context, high-uncached-input, large-thread, reasoning-spike, low-output, and high-cost recommendations.
 
-To tune project attribution locally, run `codex-usage-tracker init-projects` and edit `~/.codex-usage-tracker/projects.json`. The dashboard derives project name, relative cwd, branch, tags, and a hashed remote origin from aggregate `cwd` and local Git metadata when available.
+To tune project attribution locally, run `ai-usage-dashboard init-projects` and edit `~/.codex-usage-tracker/projects.json`. The dashboard derives project name, relative cwd, branch, tags, and a hashed remote origin from aggregate `cwd` and local Git metadata when available.
 
 Before sharing screenshots or generated artifacts, use `--privacy-mode redacted` or `--privacy-mode strict` before the subcommand:
 
 ```bash
-codex-usage-tracker --privacy-mode strict serve-dashboard --open
-codex-usage-tracker --privacy-mode strict dashboard --open
+ai-usage-dashboard --privacy-mode strict serve-dashboard --open
+ai-usage-dashboard --privacy-mode strict dashboard --open
 ```
 
 Redacted mode hides raw cwd/source paths, hides Git remote labels, and hashes unnamed projects while preserving configured aliases. Strict mode also hides project-relative cwd, Git branch, and tags. The dashboard header shows the active metadata mode.
@@ -56,12 +56,12 @@ The server keeps the HTML aggregate-only and enables two live features:
 For a static snapshot, use:
 
 ```bash
-codex-usage-tracker dashboard --open
+ai-usage-dashboard dashboard --open
 ```
 
 Static file mode can still filter, sort, and inspect aggregate call fields. It cannot refresh from logs or load raw context until you open the dashboard through `serve-dashboard`.
 
-The localhost server uses a random per-server token for refresh and context API calls, validates loopback `Host` and `Origin` headers, and can run as aggregate-only with `codex-usage-tracker serve-dashboard --no-context-api`.
+The localhost server uses a random per-server token for refresh and context API calls, validates loopback `Host` and `Origin` headers, and can run as aggregate-only with `ai-usage-dashboard serve-dashboard --no-context-api`.
 
 ## Insights View
 
@@ -91,7 +91,7 @@ Use `Calls` view when you want to inspect individual model calls.
 - The `History` control defaults to `Active sessions only`. Switch to `All history` only when you want live refresh to scan archived session logs and include any archived rows already present in SQLite.
 - The URL tracks the active view, filters, time preset or custom range, sort, preset, selected row or thread, page, and expanded threads. `Copy link` copies that state so the same investigation can be reopened.
 - `Export CSV` downloads the currently filtered aggregate calls. In Threads view, it exports the calls behind the filtered thread list rather than only the visible group headers.
-- A `Parser warnings` chip appears only when the latest refresh reports skipped token events, missing expected token fields, invalid counters, duplicate cumulative snapshots, or unknown event shapes. Use `codex-usage-tracker inspect-log <path>` to inspect a suspect log without writing to SQLite.
+- A `Parser warnings` chip appears only when the latest refresh reports skipped token events, missing expected token fields, invalid counters, duplicate cumulative snapshots, or unknown event shapes. Use `ai-usage-dashboard inspect-log <path>` to inspect a suspect log without writing to SQLite.
 - Search matches thread, cwd, model, source app/provider/format, session id, turn id, subagent role, and parent thread fields.
 - Search also matches derived project names, project-relative cwd values, tags, branch names, and redacted remote labels.
 - In redacted or strict privacy mode, search only sees the redacted metadata fields included in the dashboard payload.
@@ -208,8 +208,8 @@ Use `--privacy-mode redacted` or `--privacy-mode strict` before sharing generate
 
 Remaining 5-hour and weekly Codex allowance is read from local Codex `rate_limits` metadata when those snapshots are present. It is not inferred from the logged-in account plan, and no remote usage or account API is called. Add `~/.codex-usage-tracker/allowance.json` when you want to override dynamic values, add exact credit totals, or provide copied allowance state for environments without dynamic snapshots. Local Codex logs may also omit usage from other ChatGPT agentic surfaces that share the same allowance.
 
-Claude Code remaining limits are read from a local sanitized status-line snapshot at `~/.codex-usage-tracker/claude-limits.json`. Run `codex-usage-tracker install-claude-limits-statusline` once to update `~/.claude/settings.json`; the installer preserves an existing status-line command by wrapping it.
+Claude Code remaining limits are read from a local sanitized status-line snapshot at `~/.codex-usage-tracker/claude-limits.json`. Run `ai-usage-dashboard install-claude-limits-statusline` once to update `~/.claude/settings.json`; the installer preserves an existing status-line command by wrapping it.
 
 Archived sessions are excluded from dashboard payloads by default. The `All history` mode is an explicit opt-in because archived logs can make refreshes slower and can make current dashboards look inflated by older work.
 
-Pricing and Codex credit estimates are source-stamped local calculations. Use `codex-usage-tracker pin-pricing --output <path>` when a report needs to keep the same USD pricing snapshot over time, and use `codex-usage-tracker update-rate-card` when you want an explicit local copy of the bundled Codex credit rate-card snapshot. `update-pricing` refreshes OpenAI pricing only; add manual local prices for non-OpenAI models when you want USD estimates for those rows.
+Pricing and Codex credit estimates are source-stamped local calculations. Use `ai-usage-dashboard pin-pricing --output <path>` when a report needs to keep the same USD pricing snapshot over time, and use `ai-usage-dashboard update-rate-card` when you want an explicit local copy of the bundled Codex credit rate-card snapshot. `update-pricing` refreshes OpenAI pricing only; add manual local prices for non-OpenAI models when you want USD estimates for those rows.

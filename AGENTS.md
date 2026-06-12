@@ -2,7 +2,7 @@
 
 ## Project Purpose
 
-This repo builds a local Codex plugin and dashboard that track aggregate token usage from local AI coding-agent logs. It is evolving toward AI Usage Tracker while keeping the `codex-usage-tracker` package, CLI, and Codex plugin names for compatibility. Codex is the default source; Claude Code is supported as an opt-in source.
+This repo builds a local Codex plugin and dashboard that track aggregate token usage from local AI coding-agent logs. It is evolving toward AI Usage Tracker while keeping the `codex-usage-tracker` package name for compatibility. The CLI and Codex plugin startup command are `ai-usage-dashboard`. Codex is the default source; Claude Code is supported as an opt-in source.
 
 ## Tech Stack
 
@@ -31,7 +31,7 @@ This repo builds a local Codex plugin and dashboard that track aggregate token u
 - `~/.codex-usage-tracker/allowance.json` - optional local-only copied allowance state, never committed.
 - `.codex-plugin/plugin.json` - Codex plugin manifest.
 - `.mcp.json` - MCP server configuration for Codex.
-- `scripts/install_local_plugin.py` - compatibility wrapper around `codex-usage-tracker install-plugin`.
+- `scripts/install_local_plugin.py` - compatibility wrapper around `ai-usage-dashboard install-plugin`.
 - `scripts/check_release.py` - release-readiness checks for docs, versions, packaging, wheel contents, and tracked secret patterns.
 - `.github/workflows/ci.yml` - GitHub Actions test and package build workflow.
 - `.github/workflows/pricing-compat.yml` - scheduled/manual non-blocking live pricing parser compatibility check.
@@ -45,7 +45,7 @@ python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install ".[dev]"
-codex-usage-tracker install-plugin --python .venv/bin/python
+ai-usage-dashboard install-plugin --python .venv/bin/python
 ```
 
 ## Validation
@@ -78,20 +78,20 @@ node --check src/codex_usage_tracker/plugin_data/dashboard/dashboard_state.js
 python -m build
 python scripts/check_release.py --dist
 git diff --check
-codex-usage-tracker update-pricing --output /tmp/codex-usage-pricing.json
-codex-usage-tracker update-rate-card --output /tmp/codex-usage-rate-card.json
-codex-usage-tracker doctor
-codex-usage-tracker doctor --suggest-repair
-codex-usage-tracker dashboard --output /tmp/codex-usage-dashboard.html
-codex-usage-tracker serve-dashboard --help
-codex-usage-tracker init-allowance --output /tmp/codex-usage-allowance.json
-codex-usage-tracker parse-allowance --output /tmp/codex-usage-allowance.json "5h 79% 6:50 PM Weekly 33% Jun 7"
-codex-usage-tracker init-thresholds --output /tmp/codex-usage-thresholds.json
-codex-usage-tracker init-projects --output /tmp/codex-usage-projects.json
-codex-usage-tracker support-bundle --output /tmp/codex-usage-support.json
-codex-usage-tracker pricing-coverage
-codex-usage-tracker summary --preset by-subagent-role
-codex-usage-tracker expensive --limit 5
+ai-usage-dashboard update-pricing --output /tmp/codex-usage-pricing.json
+ai-usage-dashboard update-rate-card --output /tmp/codex-usage-rate-card.json
+ai-usage-dashboard doctor
+ai-usage-dashboard doctor --suggest-repair
+ai-usage-dashboard dashboard --output /tmp/codex-usage-dashboard.html
+ai-usage-dashboard serve-dashboard --help
+ai-usage-dashboard init-allowance --output /tmp/codex-usage-allowance.json
+ai-usage-dashboard parse-allowance --output /tmp/codex-usage-allowance.json "5h 79% 6:50 PM Weekly 33% Jun 7"
+ai-usage-dashboard init-thresholds --output /tmp/codex-usage-thresholds.json
+ai-usage-dashboard init-projects --output /tmp/codex-usage-projects.json
+ai-usage-dashboard support-bundle --output /tmp/codex-usage-support.json
+ai-usage-dashboard pricing-coverage
+ai-usage-dashboard summary --preset by-subagent-role
+ai-usage-dashboard expensive --limit 5
 ```
 
 ## Privacy Rules
@@ -112,8 +112,8 @@ codex-usage-tracker expensive --limit 5
 - MCP tool functions return concise aggregate data.
 - Dashboard is generated from aggregate-only JSON.
 - Doctor, summary presets, dashboard, and expensive-call views work from CLI and MCP wrappers.
-- `codex-usage-tracker install-plugin` can register the installed package without relying on a source-checkout symlink.
-- `python -m codex_usage_tracker` and `codex-usage-tracker --version` both work.
+- `ai-usage-dashboard install-plugin` can register the installed package without relying on a source-checkout symlink.
+- `python -m codex_usage_tracker` and `ai-usage-dashboard --version` both work.
 - Wheel and source distribution builds include plugin assets and the Codex skill.
 - `scripts/check_release.py --dist` passes before any public release.
 - Pricing coverage clearly separates configured, estimated, and unpriced model usage across sources.

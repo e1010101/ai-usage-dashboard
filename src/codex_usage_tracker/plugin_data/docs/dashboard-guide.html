@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Codex Usage Tracker Dashboard Guide</title>
+  <title>AI Usage Dashboard Dashboard Guide</title>
   <style>
     /* Terminal Sunset tokens — keep in sync with dashboard.css */
     :root {
@@ -79,24 +79,24 @@
 <body>
   <main>
     <h1>Dashboard Guide</h1>
-    <p class="disclaimer">Unofficial project: Codex Usage Tracker is independent and is not made by, affiliated with, endorsed by, sponsored by, or supported by OpenAI. OpenAI and Codex are trademarks of OpenAI.</p>
+    <p class="disclaimer">Unofficial project: AI Usage Dashboard is independent and is not made by, affiliated with, endorsed by, sponsored by, or supported by OpenAI. OpenAI and Codex are trademarks of OpenAI.</p>
     <p>This local guide uses synthetic screenshots and does not contain prompts, assistant text, tool output, or real Codex session content.</p>
     <p class="note">The screenshots below still show the previous light theme. The dashboard now ships with the Terminal Sunset dark theme; layout and controls are unchanged, so the annotated walkthroughs remain accurate. Screenshots will be regenerated from synthetic fixtures.</p>
 
     <h2>Open The Dashboard</h2>
     <p>For the best experience, run the localhost dashboard server:</p>
-    <pre><code>codex-usage-tracker setup
-codex-usage-tracker update-pricing
-codex-usage-tracker update-rate-card
-codex-usage-tracker refresh --source all
-codex-usage-tracker serve-dashboard --source all --open</code></pre>
-    <p>For optional allowance context, run <code>codex-usage-tracker init-allowance</code> or <code>codex-usage-tracker parse-allowance "5h 79% 6:50 PM Weekly 33% Jun 7"</code> with current values copied from Codex Usage or <code>/status</code>.</p>
-    <p>For Claude Code remaining limits, run <code>codex-usage-tracker install-claude-limits-statusline</code> once. The installer updates <code>~/.claude/settings.json</code>, wraps and preserves an existing status-line command when present, and writes only provider identity, percentages, reset timestamps, and source metadata to <code>~/.codex-usage-tracker/claude-limits.json</code>.</p>
-    <p>To tune review thresholds locally, run <code>codex-usage-tracker init-thresholds</code> and edit <code>~/.codex-usage-tracker/thresholds.json</code>. These thresholds control low-cache, high-context, high-uncached-input, large-thread, reasoning-spike, low-output, and high-cost recommendations.</p>
-    <p>To tune project attribution locally, run <code>codex-usage-tracker init-projects</code> and edit <code>~/.codex-usage-tracker/projects.json</code>. The dashboard derives project name, relative cwd, branch, tags, and a hashed remote origin from aggregate <code>cwd</code> and local Git metadata when available.</p>
-    <p>Before sharing screenshots or generated artifacts, put <code>--privacy-mode redacted</code> or <code>--privacy-mode strict</code> before the subcommand, such as <code>codex-usage-tracker --privacy-mode strict serve-dashboard --open</code>. Redacted mode hides raw cwd/source paths, hides Git remote labels, and hashes unnamed projects while preserving configured aliases. Strict mode also hides project-relative cwd, Git branch, and tags. The dashboard header shows the active metadata mode.</p>
+    <pre><code>ai-usage-dashboard setup
+ai-usage-dashboard update-pricing
+ai-usage-dashboard update-rate-card
+ai-usage-dashboard refresh --source all
+ai-usage-dashboard serve-dashboard --source all --open</code></pre>
+    <p>For optional allowance context, run <code>ai-usage-dashboard init-allowance</code> or <code>ai-usage-dashboard parse-allowance "5h 79% 6:50 PM Weekly 33% Jun 7"</code> with current values copied from Codex Usage or <code>/status</code>.</p>
+    <p>For Claude Code remaining limits, run <code>ai-usage-dashboard install-claude-limits-statusline</code> once. The installer updates <code>~/.claude/settings.json</code>, wraps and preserves an existing status-line command when present, and writes only provider identity, percentages, reset timestamps, and source metadata to <code>~/.codex-usage-tracker/claude-limits.json</code>.</p>
+    <p>To tune review thresholds locally, run <code>ai-usage-dashboard init-thresholds</code> and edit <code>~/.codex-usage-tracker/thresholds.json</code>. These thresholds control low-cache, high-context, high-uncached-input, large-thread, reasoning-spike, low-output, and high-cost recommendations.</p>
+    <p>To tune project attribution locally, run <code>ai-usage-dashboard init-projects</code> and edit <code>~/.codex-usage-tracker/projects.json</code>. The dashboard derives project name, relative cwd, branch, tags, and a hashed remote origin from aggregate <code>cwd</code> and local Git metadata when available.</p>
+    <p>Before sharing screenshots or generated artifacts, put <code>--privacy-mode redacted</code> or <code>--privacy-mode strict</code> before the subcommand, such as <code>ai-usage-dashboard --privacy-mode strict serve-dashboard --open</code>. Redacted mode hides raw cwd/source paths, hides Git remote labels, and hashes unnamed projects while preserving configured aliases. Strict mode also hides project-relative cwd, Git branch, and tags. The dashboard header shows the active metadata mode.</p>
     <p>The server enables live aggregate refresh and on-demand context loading. Static file mode can still filter, sort, and inspect aggregate fields, but cannot refresh logs or load context.</p>
-    <p>The localhost server uses a random per-server token for refresh and context API calls, validates loopback <code>Host</code> and <code>Origin</code> headers, and can run as aggregate-only with <code>codex-usage-tracker serve-dashboard --no-context-api</code>.</p>
+    <p>The localhost server uses a random per-server token for refresh and context API calls, validates loopback <code>Host</code> and <code>Origin</code> headers, and can run as aggregate-only with <code>ai-usage-dashboard serve-dashboard --no-context-api</code>.</p>
 
     <h2>Insights View</h2>
     <img src="assets/dashboard-insights.png" alt="Insights view with ranked attention cards, investigation presets, and top threads by attention score.">
@@ -141,7 +141,7 @@ codex-usage-tracker serve-dashboard --source all --open</code></pre>
     <h2>Privacy Model</h2>
     <p>The dashboard includes session ids, thread names, cwd values, source file paths, timestamps, model labels, reasoning effort, token counts, cost estimates, Codex credit estimates, optional manually entered allowance windows, sanitized Claude limit snapshots, and derived ratios. It does not include prompts, assistant responses, raw tool output, pasted secrets, message snippets, or transcript text. Remaining Codex allowance is read from local Codex rate-limit metadata when present; Claude remaining limits are read only from the sanitized status-line snapshot when configured. Local Codex logs may also omit usage from other ChatGPT agentic surfaces that share the same allowance. Archived sessions are excluded from dashboard payloads by default; <code>All history</code> is an explicit opt-in because archived logs can make refreshes slower and make current dashboards look inflated by older work.</p>
     <p>Use <code>--privacy-mode redacted</code> or <code>--privacy-mode strict</code> before sharing generated dashboards, CSV exports, query JSON, or support bundles. Redacted mode removes raw cwd/source paths and hides unnamed project names behind stable hashes. Strict mode also hides project-relative cwd, branch, and tags. Configured project aliases are treated as explicit display opt-ins in both modes.</p>
-    <p>Pricing and Codex credit estimates are source-stamped local calculations. Use <code>codex-usage-tracker pin-pricing --output &lt;path&gt;</code> when a report needs to keep the same USD pricing snapshot over time, and use <code>codex-usage-tracker update-rate-card</code> when you want an explicit local copy of the bundled Codex credit rate-card snapshot.</p>
+    <p>Pricing and Codex credit estimates are source-stamped local calculations. Use <code>ai-usage-dashboard pin-pricing --output &lt;path&gt;</code> when a report needs to keep the same USD pricing snapshot over time, and use <code>ai-usage-dashboard update-rate-card</code> when you want an explicit local copy of the bundled Codex credit rate-card snapshot.</p>
   </main>
 </body>
 </html>

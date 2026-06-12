@@ -1,19 +1,19 @@
 # MCP And Codex Skills
 
-Codex Usage Tracker can be installed as a local Codex plugin and exposes MCP tools for aggregate usage analysis.
+AI Usage Dashboard can be installed as a local Codex plugin and exposes MCP tools for aggregate usage analysis.
 
 ## Local Plugin
 
 After installing the Python package, register the plugin:
 
 ```bash
-codex-usage-tracker install-plugin
+ai-usage-dashboard install-plugin
 ```
 
 For a source checkout:
 
 ```bash
-codex-usage-tracker install-plugin --python .venv/bin/python
+ai-usage-dashboard install-plugin --python .venv/bin/python
 ```
 
 Restart Codex after registration so it can discover the plugin.
@@ -33,7 +33,7 @@ Good prompts for the API companion skill:
 
 ```text
 Open dashboard.
-Use my Codex Usage Tracker data to explain what drove usage this week.
+Use my AI Usage Dashboard data to explain what drove usage this week.
 Heaviest thread?
 Thread leaderboard.
 Find low-cache or high-context calls from today and suggest what to inspect next.

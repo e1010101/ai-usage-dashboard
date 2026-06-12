@@ -1,19 +1,19 @@
-# Codex Usage Tracker
+# AI Usage Dashboard
 
 <p align="center">
-  <a href="docs/assets/plugin-prompts.png"><img src="docs/assets/plugin-prompts.png?v=short-prompts" alt="Codex Usage Tracker companion prompts for opening the dashboard, finding the heaviest thread, and showing a thread leaderboard." width="49%"></a>
-  <a href="docs/assets/dashboard-calls.png"><img src="docs/assets/dashboard-calls-preview.png?v=usage-dashboard" alt="Codex Usage Tracker dashboard showing filters, usage totals, call rows, and call details." width="49%"></a>
+  <a href="docs/assets/plugin-prompts.png"><img src="docs/assets/plugin-prompts.png?v=short-prompts" alt="AI Usage Dashboard companion prompts for opening the dashboard, finding the heaviest thread, and showing a thread leaderboard." width="49%"></a>
+  <a href="docs/assets/dashboard-calls.png"><img src="docs/assets/dashboard-calls-preview.png?v=usage-dashboard" alt="AI Usage Dashboard dashboard showing filters, usage totals, call rows, and call details." width="49%"></a>
 </p>
 
 Local-first dashboard, Codex plugin, and companion skill for understanding where your AI coding-agent tokens and usage credits are going.
 
-[![CI](https://github.com/douglasmonsky/codex-usage-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/douglasmonsky/codex-usage-tracker/actions/workflows/ci.yml)
+[![CI](https://github.com/e1010101/ai-usage-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/e1010101/ai-usage-dashboard/actions/workflows/ci.yml)
 ![Python 3.10-3.13](https://img.shields.io/badge/python-3.10--3.13-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-> **Unofficial project:** Codex Usage Tracker is an independent open-source project. It is not made by, affiliated with, endorsed by, sponsored by, or supported by OpenAI. OpenAI and Codex are trademarks of OpenAI; this project only reads local log files from your machine.
+> **Unofficial project:** AI Usage Dashboard is an independent open-source project. It is not made by, affiliated with, endorsed by, sponsored by, or supported by OpenAI. OpenAI and Codex are trademarks of OpenAI; this project only reads local log files from your machine.
 
-Codex Usage Tracker is evolving into AI Usage Tracker. It reads JSONL logs already written by supported local coding agents, indexes aggregate usage counters into SQLite, and gives you a dashboard, CLI, and MCP tools for investigating real usage patterns. It keeps prompts, assistant messages, tool output, pasted secrets, and raw transcript content out of SQLite, CSV exports, and generated dashboard HTML.
+AI Usage Dashboard is evolving into AI Usage Tracker. It reads JSONL logs already written by supported local coding agents, indexes aggregate usage counters into SQLite, and gives you a dashboard, CLI, and MCP tools for investigating real usage patterns. It keeps prompts, assistant messages, tool output, pasted secrets, and raw transcript content out of SQLite, CSV exports, and generated dashboard HTML.
 
 Built for developers using local coding agents who want to know which sources, threads, models, subagents, and long chats are driving usage without uploading logs anywhere.
 
@@ -24,16 +24,16 @@ After install, you get a localhost dashboard, a local SQLite aggregate index, CL
 ```bash
 python -m pip install --user pipx
 python -m pipx ensurepath
-python -m pipx install "git+https://github.com/douglasmonsky/codex-usage-tracker.git"
-codex-usage-tracker setup
-codex-usage-tracker serve-dashboard --open
+python -m pipx install "git+https://github.com/e1010101/ai-usage-dashboard.git"
+ai-usage-dashboard setup
+ai-usage-dashboard serve-dashboard --open
 ```
 
 Use your normal Python launcher for your platform: `python3` is common on macOS/Linux, and `py` may be preferable on Windows. On macOS with Homebrew, `brew install pipx` is also fine.
 
-`setup` installs or refreshes the local Codex plugin wrapper, initializes local config templates when needed, refreshes the aggregate index, runs `codex-usage-tracker doctor`, and tells you whether Codex needs a restart for plugin discovery.
+`setup` installs or refreshes the local Codex plugin wrapper, initializes local config templates when needed, refreshes the aggregate index, runs `ai-usage-dashboard doctor`, and tells you whether Codex needs a restart for plugin discovery.
 
-Want Codex to do it for you? Paste: `Install and configure Codex Usage Tracker from https://github.com/douglasmonsky/codex-usage-tracker, then run setup and open the dashboard.`
+Want Codex to do it for you? Paste: `Install and configure AI Usage Dashboard from https://github.com/e1010101/ai-usage-dashboard, then run setup and open the dashboard.`
 
 After plugin discovery, Codex can use the companion usage skill to refresh local aggregates, call the MCP tools, and explain usage patterns conversationally. Examples: [MCP And Codex Skills](docs/mcp.md).
 
@@ -44,23 +44,23 @@ After plugin discovery, Codex can use the companion usage skill to refresh local
 If you only want plugin registration after installing the package:
 
 ```bash
-codex-usage-tracker install-plugin
+ai-usage-dashboard install-plugin
 ```
 
 More install paths: [Install Guide](docs/install.md).
 
 ## Platform Support
 
-The core app is not macOS-only. The CLI, SQLite index, dashboard generator, and localhost server are Python-based and CI-tested on Ubuntu for Python 3.10-3.13. It defaults to `~/.codex` for local Codex logs and `~/.codex-usage-tracker` for tracker data; pass `--codex-home` or `--db` when your local layout differs. Codex plugin discovery depends on Codex's local plugin directories on your machine, so run `codex-usage-tracker doctor` after setup if plugin registration does not appear in Codex.
+The core app is not macOS-only. The CLI, SQLite index, dashboard generator, and localhost server are Python-based and CI-tested on Ubuntu for Python 3.10-3.13. It defaults to `~/.codex` for local Codex logs and `~/.codex-usage-tracker` for tracker data; pass `--codex-home` or `--db` when your local layout differs. Codex plugin discovery depends on Codex's local plugin directories on your machine, so run `ai-usage-dashboard doctor` after setup if plugin registration does not appear in Codex.
 
 ## Source Support
 
-The tracker is evolving into AI Usage Tracker. The current CLI and package name remain `codex-usage-tracker` for compatibility.
+The tracker is evolving into AI Usage Tracker. The CLI and Codex plugin startup name is `ai-usage-dashboard`; the Python package/distribution name remains `codex-usage-tracker` for compatibility.
 
 - Codex: default source, read from `~/.codex/sessions`.
 - Claude Code: opt-in source, read from `~/.claude/projects`.
 
-Use `codex-usage-tracker refresh --source all` to index both supported sources, or `codex-usage-tracker refresh --source claude-code --claude-home ~/.claude` for Claude Code only. Query and summary views can filter or group by `source_provider` and `source_app`.
+Use `ai-usage-dashboard refresh --source all` to index both supported sources, or `ai-usage-dashboard refresh --source claude-code --claude-home ~/.claude` for Claude Code only. Query and summary views can filter or group by `source_provider` and `source_app`.
 
 ## Dashboard Preview
 
@@ -115,11 +115,11 @@ Practical takeaway: when old context is no longer useful, starting a fresh threa
 ## First Useful Workflow
 
 ```bash
-codex-usage-tracker update-pricing
-codex-usage-tracker update-rate-card
-codex-usage-tracker setup
-codex-usage-tracker refresh --source all
-codex-usage-tracker serve-dashboard --source all --open
+ai-usage-dashboard update-pricing
+ai-usage-dashboard update-rate-card
+ai-usage-dashboard setup
+ai-usage-dashboard refresh --source all
+ai-usage-dashboard serve-dashboard --source all --open
 ```
 
 For a Codex-only dashboard, omit `--source all` from `refresh` and `serve-dashboard`.
@@ -137,7 +137,7 @@ Then:
 Codex Usage Remaining is read automatically from local Codex JSONL `rate_limits` snapshots when those snapshots are present. Optional manual allowance context is still useful when you want to override a dynamic window, add exact credit totals, or fill in environments without dynamic snapshots:
 
 ```bash
-codex-usage-tracker parse-allowance "5h 79% 6:50 PM Weekly 33% Jun 7"
+ai-usage-dashboard parse-allowance "5h 79% 6:50 PM Weekly 33% Jun 7"
 ```
 
 The tracker does not call a remote account API or infer your logged-in ChatGPT plan. Manual allowance values in `~/.codex-usage-tracker/allowance.json` take precedence for any window where you provide `remaining_percent`, `remaining_credits`, or `total_credits`; dynamic Codex values fill the rest. Details: [Pricing, Credits, And Allowance](docs/pricing-and-credits.md).
@@ -157,14 +157,14 @@ The tracker does not call a remote account API or infer your logged-in ChatGPT p
 ## Common Commands
 
 ```bash
-codex-usage-tracker summary --preset last-7-days
-codex-usage-tracker summary --group-by source_app
-codex-usage-tracker query --source-app claude-code
-codex-usage-tracker query --since 2026-06-01 --min-credits 1
-codex-usage-tracker session <session-id>
-codex-usage-tracker export --output usage.csv
-codex-usage-tracker dashboard --open
-codex-usage-tracker support-bundle --output ~/.codex-usage-tracker/support-bundle.json
+ai-usage-dashboard summary --preset last-7-days
+ai-usage-dashboard summary --group-by source_app
+ai-usage-dashboard query --source-app claude-code
+ai-usage-dashboard query --since 2026-06-01 --min-credits 1
+ai-usage-dashboard session <session-id>
+ai-usage-dashboard export --output usage.csv
+ai-usage-dashboard dashboard --open
+ai-usage-dashboard support-bundle --output ~/.codex-usage-tracker/support-bundle.json
 ```
 
 Full command reference: [CLI Reference](docs/cli-reference.md).
@@ -178,14 +178,14 @@ It does **not** store prompts, assistant messages, tool output, pasted secrets, 
 On-demand context loading reads a single original local JSONL file only after an explicit row action, redacts common secret patterns, caps returned text size, and can be disabled with:
 
 ```bash
-codex-usage-tracker serve-dashboard --no-context-api --open
+ai-usage-dashboard serve-dashboard --no-context-api --open
 ```
 
 For shared artifacts, use:
 
 ```bash
-codex-usage-tracker --privacy-mode redacted dashboard --open
-codex-usage-tracker --privacy-mode strict export --output usage-redacted.csv
+ai-usage-dashboard --privacy-mode redacted dashboard --open
+ai-usage-dashboard --privacy-mode strict export --output usage-redacted.csv
 ```
 
 Full model: [Privacy Guide](docs/privacy.md).
@@ -207,9 +207,9 @@ Full model: [Privacy Guide](docs/privacy.md).
 Open a Codex session on your machine and paste this:
 
 ```text
-Install and configure Codex Usage Tracker from https://github.com/douglasmonsky/codex-usage-tracker.
+Install and configure AI Usage Dashboard from https://github.com/e1010101/ai-usage-dashboard.
 Use pipx if it is available. If pipx is missing, install it with the platform's Python launcher or use a local virtual environment.
-After installation, run codex-usage-tracker setup and serve-dashboard --open.
+After installation, run ai-usage-dashboard setup and serve-dashboard --open.
 Verify the dashboard opens locally and tell me the dashboard URL plus whether I need to restart Codex for plugin discovery.
 ```
 
@@ -236,8 +236,8 @@ This is optional. The normal shell install above is the fastest trusted path for
 ## Development
 
 ```bash
-git clone https://github.com/douglasmonsky/codex-usage-tracker.git
-cd codex-usage-tracker
+git clone https://github.com/e1010101/ai-usage-dashboard.git
+cd ai-usage-dashboard
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
