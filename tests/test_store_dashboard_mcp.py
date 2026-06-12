@@ -506,7 +506,7 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "Estimated Cost" in dashboard
     assert "AI Usage Dashboard" in dashboard
     assert "providerTabs" in dashboard
-    assert "providerSummary" in dashboard
+    assert "providerSummary" not in dashboard
     assert "source_provider" in dashboard
     assert "source_app" in dashboard
     assert "Source" in dashboard

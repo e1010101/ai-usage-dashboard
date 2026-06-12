@@ -62,7 +62,6 @@
     let archivedAvailableRows = Number(initialPayload.archived_available_rows || Math.max(allHistoryAvailableRows - activeAvailableRows, 0));
     let loadedLimit = payloadLimit(initialPayload);
     const providerTabsEl = document.getElementById('providerTabs');
-    const providerSummaryEl = document.getElementById('providerSummary');
     const rowsEl = document.getElementById('rows');
     const detailEl = document.getElementById('detail');
     const searchEl = document.getElementById('search');
@@ -135,15 +134,12 @@
     const allowedDatePresets = new Set(Object.keys(datePresetLabels));
     const providerProfiles = {
       overview: {
-        summary: 'Overview combines all loaded providers so you can compare overall usage before drilling into a provider-specific tab.',
         insightsCaption: 'Ranked across all visible providers. Codex credits and remaining usage apply only to Codex/OpenAI rows.',
       },
       openai: {
-        summary: 'Codex view keeps OpenAI/Codex rows in scope, including live remaining windows and Codex credit mapping when available.',
         insightsCaption: 'Ranked within visible Codex usage, with credit and remaining-usage signals included when they are available.',
       },
       anthropic: {
-        summary: 'Claude Code totals include direct input, cache writes, cache reads, and output. Large totals here are often mostly cache-read reuse.',
         insightsCaption: 'Ranked within visible Claude Code usage. Total tokens include cache reads and cache writes reported by Claude Code.',
       },
     };
@@ -485,7 +481,6 @@
       providerTabsEl.innerHTML = tabs.map(tab => `
         <button type="button" data-provider-tab="${escapeHtml(tab.key)}" aria-pressed="${tab.key === selected ? 'true' : 'false'}">${escapeHtml(tab.label)}</button>
       `).join('');
-      providerSummaryEl.textContent = currentProviderProfile(rows).summary;
       document.body.dataset.provider = selected || 'overview';
       providerTabsEl.querySelectorAll('[data-provider-tab]').forEach(button => {
         button.addEventListener('click', () => {

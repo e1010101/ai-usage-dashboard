@@ -197,14 +197,6 @@
       padding-left: 14px;
       padding-right: 14px;
     }
-    .provider-summary {
-      margin: 10px 2px 0;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 680;
-      line-height: 1.4;
-      overflow-wrap: anywhere;
-    }
     .filters {
       display: grid;
       grid-template-columns: repeat(6, minmax(0, 1fr));
