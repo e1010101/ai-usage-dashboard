@@ -1,0 +1,47 @@
+---
+name: codex-usage-tracker
+description: Use when the user asks about Codex or AI coding-agent token usage, model/reasoning efficiency, usage dashboards, CSV exports, or per-session/per-turn usage stats from local logs.
+---
+
+# Codex Usage Tracker
+
+Unofficial project: Codex Usage Tracker is independent and is not made by, affiliated with, endorsed by, sponsored by, or supported by OpenAI. OpenAI and Codex are trademarks of OpenAI.
+
+Use this plugin to inspect aggregate token usage from supported local coding-agent logs. The project is evolving toward AI Usage Tracker while the package, CLI, and Codex plugin names remain `codex-usage-tracker`. Codex is the default source; Claude Code can be included with `source="claude-code"` or `source="all"`.
+
+## Privacy Boundary
+
+The index, dashboard payload, CSV export, and normal summaries are aggregate-only. They should never return prompts, assistant message text, tool outputs, pasted secrets, or raw transcript snippets.
+
+The only exception is `usage_call_context`, which intentionally reads one selected record's source JSONL on demand. It requires `CODEX_USAGE_TRACKER_ALLOW_RAW_CONTEXT=1` in the MCP server environment. Use it only when the user explicitly asks to inspect actual context, and mention that returned text is local, redacted, size-limited, and not persisted by the tracker.
+
+## Fast Paths
+
+- For "Open dashboard" or similar dashboard-open requests, do not inspect repository files, plugin manifests, tool registries, git status, or local logs first. Run `codex-usage-tracker open-dashboard --refresh` immediately. If the user explicitly wants all supported sources, include `--source all`.
+- For "Heaviest thread?", "Thread leaderboard", or similar thread-ranking requests, do not inspect repository files, SQLite schemas, plugin manifests, process lists, dashboard servers, or local logs manually. Use the tracker API: refresh the aggregate index, then rank threads with `usage_summary(group_by="thread", limit=10, response_format="json")`. Use `source="all"` on refresh when the user asks across Codex and Claude Code.
+- If MCP tools are unavailable for thread-ranking requests, run `codex-usage-tracker refresh --json` and `codex-usage-tracker summary --group-by thread --limit 10 --json`. Add `--source all` to refresh when the user asks across all supported sources. The summary is already ordered by `total_tokens` descending.
+- Answer thread-ranking requests directly from the summary rows. For the heaviest-thread question, lead with the first row's thread and total tokens; for leaderboard requests, show a compact ranked list.
+- If the CLI command is missing for open-dashboard requests and you are already inside the source checkout, use the local virtualenv with `PYTHONPATH` set to `src`: PowerShell `$env:PYTHONPATH='src'; .\.venv\Scripts\python.exe -m codex_usage_tracker.cli open-dashboard --refresh`, or POSIX `PYTHONPATH=src .venv/bin/python -m codex_usage_tracker.cli open-dashboard --refresh`.
+- If the CLI command is missing for thread-ranking requests and you are already inside the source checkout, use the same source-checkout fallback for `refresh --json` and `summary --group-by thread --limit 10 --json`. On PowerShell, use `$env:PYTHONPATH='src'; .\.venv\Scripts\python.exe -m codex_usage_tracker.cli <command>`. On POSIX, use `PYTHONPATH=src .venv/bin/python -m codex_usage_tracker.cli <command>`.
+- If neither command is available, say briefly that the tracker CLI is not on `PATH` and ask the user to run `codex-usage-tracker setup` or reinstall with `pipx`.
+- Keep open-dashboard narration minimal: one short progress note if needed, then the opened path or the failure. Do not narrate plugin discovery.
+
+## Common Workflows
+
+- Refresh the index before answering usage questions. Use the default Codex source for Codex-only questions; use `source="all"` or `codex-usage-tracker refresh --source all` for cross-source questions.
+- Use `usage_doctor` when setup, plugin discovery, MCP launch, dashboard output, or pricing estimates look wrong.
+- Use `usage_summary` for high-level totals by date, source provider, source app, model, effort, cwd, thread, or session.
+- Use `usage_query` for stable JSON rows filtered by date, source provider/app, project, model, effort, thread, pricing status, token minimums, or Codex credit minimums.
+- Use `usage_recommendations` when the user asks what to inspect next or wants ranked action items by aggregate severity.
+- Use `usage_summary` presets `today`, `last-7-days`, `by-model`, `by-cwd`, `by-thread`, and `expensive` for common requests.
+- Use `usage_pricing_coverage` when the user asks whether costs are fully priced or which models use estimated or missing pricing.
+- Use `session_usage` for per-call and per-turn detail for one session.
+- Use `usage_call_context` for one selected model call when the user asks to load actual logged context on demand.
+- Use `most_expensive_usage_calls` to identify high-token calls and aggregate efficiency signals.
+- Use `privacy_mode="redacted"` or `privacy_mode="strict"` for MCP tools, or the CLI global option `--privacy-mode strict` before a subcommand, when the user plans to share dashboards, CSV, JSON, screenshots, or support bundles.
+- Use `generate_usage_dashboard` when the user wants a visual hoverable report, including flat calls, threaded-by-thread views, parent-thread latching for spawned subagents, auto-review attachment details, an active-only default, and explicit all-history archived-session opt-in.
+- Use `export_usage_csv` when the user wants local spreadsheet-friendly data.
+- Use `update_usage_pricing_config` when the user wants cost estimates based on OpenAI-published text-token pricing. This refreshes the local pricing cache and does not send local usage data anywhere. Internal Codex labels may include explicitly marked best-guess estimates when no public pricing row exists. For non-OpenAI models, use manual local pricing overrides.
+- Use `init_usage_pricing_config` only when the user wants a manual local pricing template or override file.
+- Codex credit estimates are aggregate-only and use bundled or locally configured Codex rate-card values. Direct model matches are exact; aliases and inferred labels are marked estimated. Non-Codex rows such as Claude Code are `not_applicable` for Codex credits.
+- Codex Usage Remaining is populated from local Codex JSONL `rate_limits` snapshots when available. Use `init_usage_allowance_config` only when the user wants a local allowance template for manual overrides, exact credit totals, or environments without dynamic Codex snapshots. Manual windows with values override dynamic windows with the same key. Claude Remaining is populated from `~/.codex-usage-tracker/claude-limits.json`; run `codex-usage-tracker install-claude-limits-statusline` once to configure Claude Code's status line, wrapping any existing status-line command.

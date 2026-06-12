@@ -1,0 +1,718 @@
+from __future__ import annotations
+
+import base64
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from codex_usage_tracker.json_contracts import validate_json_payload_contract
+
+SESSION_ID = "019e374d-c19f-7da3-a44f-8de043a7a64e"
+
+
+def test_setup_support_bundle_and_reset_db_cli(tmp_path: Path) -> None:
+    codex_home = _make_codex_home(tmp_path)
+    db_path = tmp_path / "usage.sqlite3"
+    pricing_path = tmp_path / "pricing.json"
+    allowance_path = tmp_path / "allowance.json"
+    plugin_dir = tmp_path / "plugins" / "codex-usage-tracker"
+    marketplace_path = tmp_path / "marketplace.json"
+    support_path = tmp_path / "support.json"
+
+    setup = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "--pricing",
+        str(pricing_path),
+        "--allowance",
+        str(allowance_path),
+        "setup",
+        "--codex-home",
+        str(codex_home),
+        "--plugin-dir",
+        str(plugin_dir),
+        "--marketplace",
+        str(marketplace_path),
+        "--skip-pricing",
+    )
+
+    assert setup.returncode == 0
+    assert "Codex Usage Tracker setup summary" in setup.stdout
+    assert "Restart Codex" in setup.stdout
+    assert plugin_dir.exists()
+    assert db_path.exists()
+
+    support = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "--pricing",
+        str(pricing_path),
+        "--allowance",
+        str(allowance_path),
+        "--privacy-mode",
+        "strict",
+        "support-bundle",
+        "--codex-home",
+        str(codex_home),
+        "--output",
+        str(support_path),
+    )
+    bundle = json.loads(support_path.read_text(encoding="utf-8"))
+
+    assert support.returncode == 0
+    assert bundle["privacy"]["contains_raw_logs"] is False
+    assert bundle["privacy"]["project_metadata"]["mode"] == "strict"
+    assert bundle["privacy"]["project_metadata"]["relative_cwd_hidden"] is True
+    assert bundle["refresh"]["parsed_events"] == "1"
+    assert "low_cache_ratio" in bundle["thresholds"]["keys"]
+    assert bundle["projects"]["alias_count"] == 0
+    assert "SECRET RAW PROMPT" not in json.dumps(bundle)
+
+    reset_without_confirm = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "reset-db",
+    )
+    reset = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "reset-db",
+        "--yes",
+    )
+
+    assert reset_without_confirm.returncode == 1
+    assert "Re-run with --yes" in reset_without_confirm.stderr
+    assert reset.returncode == 0
+    assert "Raw Codex logs were not touched" in reset.stdout
+
+
+def test_rate_card_allowance_and_pricing_snapshot_cli(tmp_path: Path) -> None:
+    rate_card_path = tmp_path / "rate-card.json"
+    allowance_path = tmp_path / "allowance.json"
+    pricing_path = tmp_path / "pricing.json"
+    pinned_pricing_path = tmp_path / "pricing-pinned.json"
+    pricing_path.write_text(
+        json.dumps(
+            {
+                "_source": {"name": "Synthetic pricing", "fetched_at": "2026-06-05T12:00:00Z"},
+                "models": {
+                    "gpt-5.5": {
+                        "input_per_million": 1,
+                        "cached_input_per_million": 0.1,
+                        "output_per_million": 2,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    update_rate_card = _run_cli(
+        tmp_path,
+        "--rate-card",
+        str(rate_card_path),
+        "update-rate-card",
+    )
+    parse_allowance = _run_cli(
+        tmp_path,
+        "--allowance",
+        str(allowance_path),
+        "parse-allowance",
+        "5h",
+        "79%",
+        "6:50 PM",
+        "Weekly",
+        "33%",
+        "Jun 7",
+    )
+    pin_pricing = _run_cli(
+        tmp_path,
+        "--pricing",
+        str(pricing_path),
+        "pin-pricing",
+        "--output",
+        str(pinned_pricing_path),
+    )
+
+    assert update_rate_card.returncode == 0
+    assert "Codex credit rates" in update_rate_card.stdout
+    assert json.loads(rate_card_path.read_text(encoding="utf-8"))["schema"] == (
+        "codex-usage-tracker-codex-rate-card-v1"
+    )
+    assert parse_allowance.returncode == 0
+    allowance = json.loads(allowance_path.read_text(encoding="utf-8"))
+    assert allowance["windows"][0]["remaining_percent"] == 0.79
+    assert allowance["windows"][1]["remaining_percent"] == 0.33
+    assert pin_pricing.returncode == 0
+    pinned = json.loads(pinned_pricing_path.read_text(encoding="utf-8"))
+    assert pinned["_source"]["pinned"] is True
+    assert pinned["_source"]["pin_note"].startswith("Use this file")
+
+
+def test_capture_claude_limits_cli_writes_sanitized_snapshot(tmp_path: Path) -> None:
+    limits_path = tmp_path / "claude-limits.json"
+    statusline_payload = {
+        "session_id": "claude-session-1",
+        "transcript_path": "/tmp/secret-transcript.jsonl",
+        "rate_limits": {
+            "five_hour": {"used_percentage": 50, "resets_at": 1774686045},
+            "seven_day": {"used_percentage": 20, "resets_at": 1775186466},
+        },
+    }
+
+    capture = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "codex_usage_tracker",
+            "capture-claude-limits",
+            "--output",
+            str(limits_path),
+            "--json",
+        ],
+        cwd=tmp_path,
+        input=json.dumps(statusline_payload),
+        capture_output=True,
+        text=True,
+        env=_subprocess_env(),
+    )
+
+    assert capture.returncode == 0
+    payload = json.loads(capture.stdout)
+    snapshot = json.loads(limits_path.read_text(encoding="utf-8"))
+    _assert_contract(payload)
+    assert payload["schema"] == "codex-usage-tracker-claude-limits-capture-v1"
+    assert payload["window_count"] == 2
+    assert snapshot["windows"][0]["remaining_percent"] == 0.5
+    assert snapshot["windows"][1]["remaining_percent"] == 0.8
+    assert "transcript_path" not in json.dumps(snapshot)
+
+
+def test_install_claude_limits_statusline_wraps_existing_command(tmp_path: Path) -> None:
+    claude_home = tmp_path / ".claude"
+    settings_path = claude_home / "settings.json"
+    limits_path = tmp_path / "claude-limits.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(
+        json.dumps(
+            {
+                "theme": "dark",
+                "statusLine": {
+                    "type": "command",
+                    "command": "python existing-statusline.py",
+                    "padding": 1,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    install = _run_cli(
+        tmp_path,
+        "install-claude-limits-statusline",
+        "--claude-home",
+        str(claude_home),
+        "--limits-path",
+        str(limits_path),
+        "--json",
+    )
+
+    assert install.returncode == 0
+    payload = json.loads(install.stdout)
+    _assert_contract(payload)
+    updated = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert payload["schema"] == "codex-usage-tracker-claude-statusline-install-v1"
+    assert payload["installed"] is True
+    assert payload["already_installed"] is False
+    assert payload["wrapped_existing"] is True
+    assert payload["backup_path"]
+    assert Path(payload["backup_path"]).exists()
+    assert updated["theme"] == "dark"
+    assert updated["statusLine"]["type"] == "command"
+    assert updated["statusLine"]["padding"] == 1
+    assert "claude-statusline" in updated["statusLine"]["command"]
+    assert "--original-command-base64" in updated["statusLine"]["command"]
+    assert limits_path.as_posix() in updated["statusLine"]["command"]
+    assert "\\" not in updated["statusLine"]["command"]
+
+    reinstall = _run_cli(
+        tmp_path,
+        "install-claude-limits-statusline",
+        "--claude-home",
+        str(claude_home),
+        "--limits-path",
+        str(limits_path),
+        "--json",
+    )
+    reinstall_payload = json.loads(reinstall.stdout)
+    _assert_contract(reinstall_payload)
+    assert reinstall.returncode == 0
+    assert reinstall_payload["installed"] is True
+    assert reinstall_payload["already_installed"] is True
+    assert reinstall_payload["changed"] is False
+    assert reinstall_payload["backup_path"] is None
+
+
+def test_claude_statusline_wrapper_captures_and_preserves_existing_output(
+    tmp_path: Path,
+) -> None:
+    limits_path = tmp_path / "claude-limits.json"
+    seen_stdin_path = tmp_path / "seen-stdin.json"
+    existing_script = tmp_path / "existing_statusline.py"
+    existing_script.write_text(
+        "\n".join(
+            [
+                "from pathlib import Path",
+                "import sys",
+                f"Path({str(seen_stdin_path)!r}).write_text(sys.stdin.read(), encoding='utf-8')",
+                "print('existing status')",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    original_command = subprocess.list2cmdline([sys.executable, str(existing_script)])
+    encoded_command = base64.urlsafe_b64encode(original_command.encode("utf-8")).decode("ascii")
+    statusline_payload = {
+        "session_id": "claude-session-1",
+        "transcript_path": "/tmp/secret-transcript.jsonl",
+        "rate_limits": {
+            "five_hour": {"used_percentage": 25, "resets_at": 1774686045},
+            "seven_day": {"used_percentage": 90, "resets_at": 1775186466},
+        },
+    }
+
+    wrapper = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "codex_usage_tracker",
+            "claude-statusline",
+            "--limits-path",
+            str(limits_path),
+            "--original-command-base64",
+            encoded_command,
+        ],
+        cwd=tmp_path,
+        input=json.dumps(statusline_payload),
+        capture_output=True,
+        text=True,
+        env=_subprocess_env(),
+    )
+
+    assert wrapper.returncode == 0
+    assert wrapper.stdout == "existing status\n"
+    assert seen_stdin_path.read_text(encoding="utf-8") == json.dumps(statusline_payload)
+    snapshot = json.loads(limits_path.read_text(encoding="utf-8"))
+    assert snapshot["windows"][0]["remaining_percent"] == 0.75
+    assert snapshot["windows"][1]["remaining_percent"] == 0.1
+    assert "transcript_path" not in json.dumps(snapshot)
+
+
+def test_report_json_and_query_cli(tmp_path: Path) -> None:
+    codex_home = _make_codex_home(tmp_path)
+    db_path = tmp_path / "usage.sqlite3"
+    pricing_path = tmp_path / "pricing.json"
+    allowance_path = tmp_path / "allowance.json"
+    pricing_path.write_text(
+        json.dumps(
+            {
+                "models": {
+                    "gpt-5.5": {
+                        "input_per_million": 2.0,
+                        "cached_input_per_million": 0.5,
+                        "output_per_million": 10.0,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    refresh = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "refresh",
+        "--codex-home",
+        str(codex_home),
+        "--json",
+    )
+    summary = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "--pricing",
+        str(pricing_path),
+        "summary",
+        "--group-by",
+        "model",
+        "--json",
+    )
+    query = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "--pricing",
+        str(pricing_path),
+        "--allowance",
+        str(allowance_path),
+        "--privacy-mode",
+        "strict",
+        "query",
+        "--model",
+        "gpt-5.5",
+        "--min-tokens",
+        "50",
+    )
+    recommendations = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "--pricing",
+        str(tmp_path / "missing-pricing.json"),
+        "--allowance",
+        str(allowance_path),
+        "recommendations",
+        "--limit",
+        "1",
+        "--json",
+    )
+    session = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "session",
+        SESSION_ID,
+        "--json",
+    )
+    expensive = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "--pricing",
+        str(pricing_path),
+        "expensive",
+        "--limit",
+        "1",
+        "--json",
+    )
+    csv_path = tmp_path / "redacted.csv"
+    export = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "--privacy-mode",
+        "redacted",
+        "export",
+        "--output",
+        str(csv_path),
+        "--json",
+    )
+
+    assert refresh.returncode == 0
+    refresh_payload = json.loads(refresh.stdout)
+    summary_payload = json.loads(summary.stdout)
+    query_payload = json.loads(query.stdout)
+    recommendations_payload = json.loads(recommendations.stdout)
+    session_payload = json.loads(session.stdout)
+    expensive_payload = json.loads(expensive.stdout)
+    _assert_contract(refresh_payload)
+    _assert_contract(summary_payload)
+    _assert_contract(query_payload)
+    _assert_contract(recommendations_payload)
+    _assert_contract(session_payload)
+    _assert_contract(expensive_payload)
+    assert refresh_payload["schema"] == "codex-usage-tracker-refresh-v1"
+    assert summary_payload["schema"] == "codex-usage-tracker-summary-v1"
+    assert summary_payload["rows"][0]["group_key"] == "gpt-5.5"
+    assert query_payload["schema"] == "codex-usage-tracker-query-v1"
+    assert query_payload["filters"]["model"] == "gpt-5.5"
+    assert query_payload["filters"]["privacy_mode"] == "strict"
+    assert query_payload["row_count"] == 1
+    assert query_payload["rows"][0]["model"] == "gpt-5.5"
+    assert query_payload["rows"][0]["pricing_model"] == "gpt-5.5"
+    assert query_payload["rows"][0]["cwd"].startswith("[redacted cwd:")
+    assert query_payload["rows"][0]["project_relative_cwd"] is None
+    assert "/tmp/codex-usage-tracker" not in query.stdout
+    assert "SECRET RAW PROMPT" not in query.stdout
+    assert recommendations_payload["schema"] == "codex-usage-tracker-recommendations-v1"
+    assert recommendations_payload["row_count"] == 1
+    assert recommendations_payload["rows"][0]["primary_signal"] == "pricing-gap"
+    assert recommendations_payload["rows"][0]["recommendation_score"] > 0
+    assert recommendations_payload["threads"][0]["primary_recommendation"]["key"] == "pricing-gap"
+    assert session_payload["schema"] == "codex-usage-tracker-session-v1"
+    assert session_payload["resolved_session_id"] == SESSION_ID
+    assert expensive_payload["schema"] == "codex-usage-tracker-summary-v1"
+    assert expensive_payload["is_expensive"] is True
+    export_payload = json.loads(export.stdout)
+    _assert_contract(export_payload)
+    assert export.returncode == 0
+    assert export_payload["privacy_mode"] == "redacted"
+    assert "[redacted cwd:" in csv_path.read_text(encoding="utf-8")
+
+
+def test_refresh_cli_accepts_claude_source(tmp_path: Path) -> None:
+    claude_home = _make_claude_home(tmp_path)
+    db_path = tmp_path / "usage.sqlite3"
+
+    result = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "refresh",
+        "--source",
+        "claude-code",
+        "--claude-home",
+        str(claude_home),
+        "--json",
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["schema"] == "codex-usage-tracker-refresh-v1"
+    assert payload["parsed_events"] == 2
+    assert payload["source_results"]["claude-code"]["source_provider"] == "anthropic"
+
+
+def test_query_and_recommendations_cli_accept_source_filters(tmp_path: Path) -> None:
+    codex_home = _make_codex_home(tmp_path)
+    claude_home = _make_claude_home(tmp_path)
+    db_path = tmp_path / "usage.sqlite3"
+    allowance_path = tmp_path / "allowance.json"
+    pricing_path = tmp_path / "pricing.json"
+
+    refresh = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "refresh",
+        "--source",
+        "all",
+        "--codex-home",
+        str(codex_home),
+        "--claude-home",
+        str(claude_home),
+        "--json",
+    )
+    query = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "--pricing",
+        str(pricing_path),
+        "--allowance",
+        str(allowance_path),
+        "query",
+        "--source-provider",
+        "anthropic",
+        "--source-app",
+        "claude-code",
+        "--limit",
+        "0",
+    )
+    query_by_credit = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "--pricing",
+        str(pricing_path),
+        "--allowance",
+        str(allowance_path),
+        "query",
+        "--credit-confidence",
+        "not_applicable",
+        "--limit",
+        "0",
+    )
+    recommendations = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "--pricing",
+        str(pricing_path),
+        "--allowance",
+        str(allowance_path),
+        "recommendations",
+        "--source-provider",
+        "anthropic",
+        "--source-app",
+        "claude-code",
+        "--limit",
+        "0",
+        "--json",
+    )
+
+    assert refresh.returncode == 0
+    query_payload = json.loads(query.stdout)
+    query_by_credit_payload = json.loads(query_by_credit.stdout)
+    recommendations_payload = json.loads(recommendations.stdout)
+    _assert_contract(query_payload)
+    _assert_contract(query_by_credit_payload)
+    _assert_contract(recommendations_payload)
+    assert query_payload["filters"]["source_provider"] == "anthropic"
+    assert query_payload["filters"]["source_app"] == "claude-code"
+    assert query_payload["row_count"] == 2
+    assert {row["source_app"] for row in query_payload["rows"]} == {"claude-code"}
+    assert query_by_credit_payload["filters"]["credit_confidence"] == "not_applicable"
+    assert query_by_credit_payload["row_count"] == 2
+    assert {row["usage_credit_confidence"] for row in query_by_credit_payload["rows"]} == {
+        "not_applicable"
+    }
+    assert recommendations_payload["filters"]["source_provider"] == "anthropic"
+    assert recommendations_payload["filters"]["source_app"] == "claude-code"
+    assert recommendations_payload["row_count"] == 2
+
+
+def _assert_contract(payload: object) -> None:
+    assert validate_json_payload_contract(payload) == []
+
+
+def _run_cli(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-m", "codex_usage_tracker", *args],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env=_subprocess_env(),
+    )
+
+
+def _make_codex_home(tmp_path: Path) -> Path:
+    codex_home = tmp_path / ".codex"
+    log_dir = codex_home / "sessions" / "2026" / "05" / "17"
+    log_path = log_dir / f"rollout-2026-05-17T14-58-23-{SESSION_ID}.jsonl"
+    _write_jsonl(
+        codex_home / "session_index.jsonl",
+        [
+            {
+                "id": SESSION_ID,
+                "thread_name": "Synthetic setup test",
+                "updated_at": "2026-05-17T18:58:27Z",
+            }
+        ],
+    )
+    _write_jsonl(
+        log_path,
+        [
+            _entry("session_meta", {"id": SESSION_ID}),
+            _entry("turn_context", {"turn_id": "turn-a", "model": "gpt-5.5"}),
+            _entry(
+                "response_item",
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": "SECRET RAW PROMPT"}],
+                },
+            ),
+            _token_event(100, 100),
+        ],
+    )
+    return codex_home
+
+
+def _make_claude_home(tmp_path: Path) -> Path:
+    claude_home = tmp_path / ".claude"
+    log_path = claude_home / "projects" / "project-a" / "session.jsonl"
+    rows = [
+        _claude_assistant_entry(
+            "msg-001",
+            input_tokens=100,
+            cache_creation_input_tokens=20,
+            cache_read_input_tokens=50,
+            output_tokens=30,
+        ),
+        _claude_assistant_entry(
+            "msg-002",
+            input_tokens=40,
+            cache_read_input_tokens=10,
+            output_tokens=60,
+        ),
+    ]
+    _write_jsonl(log_path, rows)
+    return claude_home
+
+
+def _claude_assistant_entry(
+    message_id: str,
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cache_creation_input_tokens: int = 0,
+    cache_read_input_tokens: int = 0,
+) -> dict[str, object]:
+    return {
+        "type": "assistant",
+        "timestamp": "2026-06-08T12:00:00.000Z",
+        "sessionId": "claude-session-1",
+        "cwd": "/tmp/claude-project",
+        "message": {
+            "id": message_id,
+            "role": "assistant",
+            "model": "claude-sonnet-4-20250514",
+            "usage": {
+                "input_tokens": input_tokens,
+                "cache_creation_input_tokens": cache_creation_input_tokens,
+                "cache_read_input_tokens": cache_read_input_tokens,
+                "output_tokens": output_tokens,
+            },
+        },
+    }
+
+
+def _token_event(cumulative_total: int, last_total: int) -> dict[str, object]:
+    return _entry(
+        "event_msg",
+        {
+            "type": "token_count",
+            "info": {
+                "total_token_usage": {
+                    "input_tokens": cumulative_total - 10,
+                    "cached_input_tokens": 20,
+                    "output_tokens": 10,
+                    "reasoning_output_tokens": 5,
+                    "total_tokens": cumulative_total,
+                },
+                "last_token_usage": {
+                    "input_tokens": last_total - 10,
+                    "cached_input_tokens": 5,
+                    "output_tokens": 10,
+                    "reasoning_output_tokens": 5,
+                    "total_tokens": last_total,
+                },
+                "model_context_window": 258400,
+            },
+        },
+    )
+
+
+def _entry(entry_type: str, payload: dict[str, object]) -> dict[str, object]:
+    return {
+        "timestamp": "2026-05-17T18:58:27.000Z",
+        "type": entry_type,
+        "payload": payload,
+    }
+
+
+def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+
+def _subprocess_env() -> dict[str, str]:
+    env = dict(os.environ)
+    repo_root = Path(__file__).resolve().parents[1]
+    src_path = str(repo_root / "src")
+    env["PYTHONPATH"] = (
+        f"{src_path}{os.pathsep}{env['PYTHONPATH']}"
+        if env.get("PYTHONPATH")
+        else src_path
+    )
+    return env

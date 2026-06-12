@@ -1,0 +1,141 @@
+# Install Guide
+
+## Recommended Install
+
+Use `pipx` so the tracker is installed as a command-line app without mixing dependencies into another project.
+
+```bash
+python -m pip install --user pipx
+python -m pipx ensurepath
+python -m pipx install "git+https://github.com/douglasmonsky/codex-usage-tracker.git"
+codex-usage-tracker setup
+codex-usage-tracker serve-dashboard --open
+```
+
+Use the Python launcher that is normal for your platform:
+
+- macOS/Linux: `python3` may be the right command instead of `python`.
+- Windows: `py -m pip install --user pipx`, `py -m pipx ensurepath`, and `py -m pipx install ...`.
+- macOS with Homebrew: `brew install pipx` is a convenient alternative to `python -m pip install --user pipx`.
+
+If `codex-usage-tracker` is not found immediately after `ensurepath`, open a new terminal or add the printed pipx binary directory to `PATH`.
+
+`setup` installs or refreshes the package-owned plugin wrapper, including MCP tools and companion Codex skills, initializes local config templates when needed, refreshes the aggregate index, runs `doctor`, prints a success/failure summary, and tells you whether Codex needs a restart for plugin discovery.
+
+Restart Codex after plugin registration if you want Codex to discover the MCP tools in a fresh session. The localhost dashboard can run immediately.
+
+## Platform Support
+
+The CLI, SQLite index, dashboard generator, and localhost server are Python-based and are not macOS-only. CI runs the package on Ubuntu with Python 3.10, 3.11, 3.12, and 3.13.
+
+By default the tracker looks for Codex JSONL logs under `~/.codex`, stores its own database/config under `~/.codex-usage-tracker`, and writes the local plugin wrapper under `~/plugins/codex-usage-tracker`. Override paths with `--codex-home`, `--db`, `--plugin-dir`, or `--marketplace` if your platform or Codex installation uses a different layout.
+
+Windows support should work for the core dashboard/CLI when Codex writes readable JSONL logs, but plugin discovery is tied to Codex's local plugin directory behavior. Run `codex-usage-tracker doctor --suggest-repair` after setup if Codex does not show the plugin.
+
+## Upgrade
+
+```bash
+pipx upgrade codex-usage-tracker
+codex-usage-tracker setup
+```
+
+When installed from GitHub through `pipx`, rerun the GitHub install with `--force`:
+
+```bash
+pipx install --force "git+https://github.com/douglasmonsky/codex-usage-tracker.git"
+codex-usage-tracker setup
+```
+
+## Codex-Assisted Install
+
+Open a Codex session on your machine and paste:
+
+```text
+Install and configure Codex Usage Tracker from https://github.com/douglasmonsky/codex-usage-tracker.
+Use pipx if it is available. If pipx is missing, install it with the platform's Python launcher or use a local virtual environment.
+After installation, run codex-usage-tracker setup and serve-dashboard --open.
+Verify the dashboard opens locally and tell me the dashboard URL plus whether I need to restart Codex for plugin discovery.
+```
+
+Codex should run roughly the same shell commands as the recommended install. This path is useful if you want Codex to verify the dashboard URL and plugin discovery state for you.
+
+After Codex discovers the plugin, you can ask usage questions directly in a Codex session. The `codex-usage-api` companion skill guides Codex to refresh the aggregate index, query stable local JSON/MCP outputs, and explain usage patterns without storing prompts or raw transcript text. See [MCP And Codex Skills](mcp.md) for example prompts.
+
+## Source Checkout
+
+```bash
+git clone https://github.com/douglasmonsky/codex-usage-tracker.git
+cd codex-usage-tracker
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install ".[dev]"
+codex-usage-tracker install-plugin --python .venv/bin/python
+```
+
+Use the source checkout when developing the project or testing a branch locally.
+
+## Plugin Registration
+
+After installing the Python package, register the local Codex plugin:
+
+```bash
+codex-usage-tracker install-plugin
+```
+
+For a source checkout that should use the repo-local virtual environment:
+
+```bash
+codex-usage-tracker install-plugin --python .venv/bin/python
+```
+
+When the selected Python is a repo-local virtual environment, the generated MCP config includes a `PYTHONPATH` pointing at that checkout's `src` directory. That keeps source-checkout plugin installs working even before an editable install. `doctor --suggest-repair` validates that the configured MCP Python can import the server.
+
+If you previously installed the older source-checkout symlink, replace it once:
+
+```bash
+codex-usage-tracker install-plugin --python .venv/bin/python --force
+```
+
+`install-plugin` creates `~/plugins/codex-usage-tracker`, writes a package-owned `.mcp.json` that points at the installed Python executable, and updates `~/.agents/plugins/marketplace.json`.
+
+## Local Dashboard
+
+Generate a static dashboard:
+
+```bash
+codex-usage-tracker dashboard --open
+codex-usage-tracker open-dashboard
+```
+
+Serve the dashboard with live aggregate refresh and lazy context loading:
+
+```bash
+codex-usage-tracker serve-dashboard --open
+codex-usage-tracker serve-dashboard --no-context-api --open
+```
+
+The server binds to localhost, requires a per-server token for refresh/context endpoints, and rejects non-loopback `Host` or cross-origin `Origin` headers.
+
+## Setup Checks
+
+```bash
+codex-usage-tracker doctor
+codex-usage-tracker doctor --suggest-repair
+codex-usage-tracker --version
+python -m codex_usage_tracker --version
+```
+
+`doctor` is read-only. `doctor --suggest-repair` explains likely follow-up commands without making changes.
+
+## Lifecycle Commands
+
+```bash
+codex-usage-tracker setup
+codex-usage-tracker upgrade-plugin
+codex-usage-tracker uninstall-plugin
+codex-usage-tracker reset-db --yes
+codex-usage-tracker support-bundle --output ~/.codex-usage-tracker/support-bundle.json
+```
+
+`support-bundle` writes package, Python, OS, doctor, database schema, parser diagnostics, pricing status, and allowance status. It does not include raw logs, prompts, assistant messages, tool output, or context text.

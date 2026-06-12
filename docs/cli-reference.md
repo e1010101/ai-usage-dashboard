@@ -1,0 +1,155 @@
+# CLI Reference
+
+This page lists the common command-line workflows. For tested JSON contract ids, payload shapes, and error codes, see [CLI And MCP JSON Schemas](cli-json-schemas.md).
+
+## Index And Setup
+
+Refresh the local aggregate index:
+
+```bash
+codex-usage-tracker refresh
+codex-usage-tracker refresh --source all
+codex-usage-tracker refresh --source claude-code --claude-home ~/.claude
+```
+
+Rebuild the local aggregate index after parser or schema changes:
+
+```bash
+codex-usage-tracker rebuild-index
+codex-usage-tracker rebuild-index --source all
+```
+
+`refresh` defaults to the Codex source at `~/.codex/sessions`. `--source claude-code` scans Claude Code JSONL files under `~/.claude/projects`, and `--source all` scans every supported source. `rebuild-index` clears only the local aggregate `usage_events` and refresh metadata tables, then rescans the selected local sources.
+
+Inspect one source log without writing to SQLite:
+
+```bash
+codex-usage-tracker inspect-log ~/.codex/sessions/YYYY/MM/DD/rollout-...jsonl
+codex-usage-tracker inspect-log ~/.codex/sessions/YYYY/MM/DD/rollout-...jsonl --json
+codex-usage-tracker inspect-log ~/.claude/projects/<project>/<session>.jsonl --json
+```
+
+`inspect-log` reports parser adapter, aggregate token-count events, session ids, models, and parser diagnostics. It does not store raw prompts, assistant messages, tool output, or transcript snippets.
+
+## Dashboard
+
+```bash
+codex-usage-tracker dashboard --open
+codex-usage-tracker dashboard --include-archived --open
+codex-usage-tracker open-dashboard
+codex-usage-tracker serve-dashboard --open
+codex-usage-tracker serve-dashboard --source all --open
+codex-usage-tracker serve-dashboard --no-context-api --open
+```
+
+`serve-dashboard --context-api explicit` is the default and keeps context loading as an explicit per-row action. `serve-dashboard --no-context-api` or `--context-api disabled` serves live aggregate refresh while disabling `/api/context` entirely.
+
+Dashboards default to active sessions only. Use `--include-archived` for an all-history static/opened dashboard, or switch the served dashboard's `History` control from `Active sessions only` to `All history` when you intentionally want archived logs scanned and included.
+
+The localhost `/api/usage` endpoint accepts `limit` and `offset` query parameters, so automation can page aggregate rows without asking the server to load an entire large history at once.
+
+Claude Code remaining limits appear on the Claude Code tab when `~/.codex-usage-tracker/claude-limits.json` exists. Run `codex-usage-tracker install-claude-limits-statusline` once to configure Claude Code to keep that snapshot filled automatically.
+
+## Summaries
+
+```bash
+codex-usage-tracker summary --group-by model
+codex-usage-tracker summary --group-by source_app
+codex-usage-tracker summary --group-by source_provider
+codex-usage-tracker summary --group-by project
+codex-usage-tracker summary --group-by project_tag
+codex-usage-tracker summary --group-by thread --limit 20
+codex-usage-tracker summary --preset today
+codex-usage-tracker summary --preset last-7-days
+codex-usage-tracker summary --preset expensive
+codex-usage-tracker summary --preset by-subagent-role
+codex-usage-tracker expensive --limit 10
+codex-usage-tracker recommendations --limit 10
+codex-usage-tracker pricing-coverage
+```
+
+Useful investigations:
+
+- Sort by `Highest Codex credits` to find calls or threads consuming the most usage allowance.
+- Sort by `Cache` to find threads that are mostly new context versus mostly reused context.
+- Sort by `Context` to find calls approaching the model context window.
+- Filter by model or reasoning effort to compare usage patterns across model choices.
+- Group by `source_app` or `source_provider` to compare Codex and Claude Code aggregate usage.
+- Use `summary --preset by-subagent-role` to see whether delegated work is driving a large share of usage.
+- Use `expensive --limit 10` for a quick list of the highest-cost calls.
+- Use `recommendations --json` for ranked action rows and thread rollups with severity score, primary recommendation, and secondary signals.
+
+## JSON Queries
+
+```bash
+codex-usage-tracker query --since 2026-06-01 --project codex-usage-tracker --min-credits 1
+codex-usage-tracker query --source-app claude-code
+codex-usage-tracker query --source-provider anthropic --limit 0
+codex-usage-tracker query --pricing-status unpriced --limit 0
+codex-usage-tracker recommendations --since 2026-06-01 --json
+codex-usage-tracker recommendations --source-app codex --json
+codex-usage-tracker summary --group-by model --json
+codex-usage-tracker session <session-id> --json
+```
+
+Use `query` when you need stable JSON for automation across source provider/app, project, model, effort, thread, pricing, token, or credit filters.
+
+## Session And Context
+
+Show one session:
+
+```bash
+codex-usage-tracker session <session-id>
+```
+
+Load one call's logged context on demand:
+
+```bash
+codex-usage-tracker context <record-id>
+```
+
+Raw context is read from the original local JSONL source only when explicitly requested. It is not written to SQLite, CSV, or generated dashboard HTML.
+
+## Export
+
+```bash
+codex-usage-tracker export --output usage.csv
+codex-usage-tracker export --output usage.csv --limit 0
+```
+
+Use `--privacy-mode redacted` or `--privacy-mode strict` before sharing CSV output.
+
+## Local Config
+
+```bash
+codex-usage-tracker update-pricing
+codex-usage-tracker pin-pricing --output ~/.codex-usage-tracker/pricing-2026-06-05.json
+codex-usage-tracker init-pricing
+codex-usage-tracker update-rate-card
+codex-usage-tracker init-allowance
+codex-usage-tracker parse-allowance "5h 79% 6:50 PM Weekly 33% Jun 7"
+codex-usage-tracker install-claude-limits-statusline
+codex-usage-tracker capture-claude-limits --quiet
+codex-usage-tracker init-thresholds
+codex-usage-tracker init-projects
+```
+
+Local config files live under `~/.codex-usage-tracker/` and are never committed by this project.
+
+`update-pricing` still refreshes OpenAI-published text-token pricing only. Configure non-OpenAI model prices manually in `~/.codex-usage-tracker/pricing.json` when you want USD estimates for Claude Code rows.
+
+`install-claude-limits-statusline` updates `~/.claude/settings.json` so Claude Code calls the tracker from its `statusLine` command. If you already have a status line, the installer wraps and preserves that command and writes a backup of the settings file before changing it.
+
+`capture-claude-limits` is the lower-level stdin command used by the wrapper. It reads Claude Code status-line JSON and writes a sanitized local snapshot with only provider identity, remaining percentages, reset timestamps, and source metadata.
+
+## Privacy Mode
+
+`--privacy-mode` is a global option, so place it before the subcommand:
+
+```bash
+codex-usage-tracker --privacy-mode redacted dashboard --open
+codex-usage-tracker --privacy-mode strict export --output usage-redacted.csv
+codex-usage-tracker --privacy-mode strict query --since 2026-06-01
+```
+
+`normal` keeps local project metadata visible. `redacted` hides raw `cwd` and source paths, hides Git remote labels, and replaces unnamed projects with stable hashed labels. `strict` also hides project-relative cwd, Git branch, and project tags.
