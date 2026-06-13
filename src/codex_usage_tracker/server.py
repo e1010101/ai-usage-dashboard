@@ -29,6 +29,7 @@ from codex_usage_tracker.paths import (
     DEFAULT_CLAUDE_LIMITS_PATH,
     DEFAULT_CODEX_HOME,
     DEFAULT_DASHBOARD_PATH,
+    DEFAULT_LIMIT_HISTORY_PATH,
     DEFAULT_PRICING_PATH,
     DEFAULT_PROJECTS_PATH,
     DEFAULT_RATE_CARD_PATH,
@@ -58,6 +59,7 @@ def serve_dashboard(
     thresholds_path: Path = DEFAULT_THRESHOLDS_PATH,
     projects_path: Path = DEFAULT_PROJECTS_PATH,
     privacy_mode: str = "normal",
+    limit_history_path: Path = DEFAULT_LIMIT_HISTORY_PATH,
 ) -> None:
     """Generate and serve the dashboard plus a localhost-only context endpoint."""
 
@@ -81,6 +83,7 @@ def serve_dashboard(
         projects_path=projects_path,
         privacy_mode=privacy_mode,
         include_archived=include_archived,
+        limit_history_path=limit_history_path,
     )
     handler = partial(
         _UsageDashboardHandler,
@@ -104,6 +107,7 @@ def serve_dashboard(
         api_token=api_token,
         context_api_enabled=context_api_enabled,
         refresh_lock=threading.Lock(),
+        limit_history_path=limit_history_path,
     )
     server = ThreadingHTTPServer((host, port), handler)
     url = f"http://{_url_host(host)}:{port}/{output.name}"
@@ -144,6 +148,7 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
         source: str = SOURCE_CODEX,
         privacy_mode: str = "normal",
         rate_card_path: Path = DEFAULT_RATE_CARD_PATH,
+        limit_history_path: Path = DEFAULT_LIMIT_HISTORY_PATH,
         **kwargs: object,
     ) -> None:
         self._db_path = db_path
@@ -151,6 +156,7 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
         self._allowance_path = allowance_path
         self._rate_card_path = rate_card_path
         self._claude_limits_path = claude_limits_path
+        self._limit_history_path = limit_history_path
         self._thresholds_path = thresholds_path
         self._projects_path = projects_path
         self._privacy_mode = privacy_mode
@@ -299,6 +305,7 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
                 context_api_enabled=self._context_api_enabled,
                 include_archived=include_archived,
                 compact_rows=True,
+                limit_history_path=self._limit_history_path,
             )
         except sqlite3.Error as exc:
             self._send_json(
@@ -338,6 +345,7 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
                 projects_path=self._projects_path,
                 privacy_mode=self._privacy_mode,
                 include_archived=self._include_archived,
+                limit_history_path=self._limit_history_path,
             )
         except sqlite3.Error as exc:
             self._send_json(

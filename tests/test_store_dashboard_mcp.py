@@ -838,6 +838,23 @@ def test_dashboard_usage_analytics_contract(tmp_path: Path) -> None:
     assert "data-tooltip" in dashboard_js
     assert "<title>" not in dashboard_js
     assert ".trend-tooltip" in dashboard_css
+    # Limit history feeds burn-down sparklines, pace forecasts, and window attribution.
+    assert "Limits Burn-down" in dashboard
+    assert "limitBurndown" in dashboard
+    assert "provider_limit_history" in dashboard
+    for symbol in (
+        "limitHistorySeries",
+        "currentWindowSegment",
+        "limitForecast",
+        "limitForecastText",
+        "windowAttributionText",
+        "renderLimitBurndown",
+        "burndownSparkline",
+    ):
+        assert symbol in dashboard_js
+    assert "window drivers" in dashboard_js
+    assert "to exhaustion at current pace" in dashboard_js
+    assert ".burn-spark" in dashboard_css
     assert "notation: 'compact'" in dashboard_format_js
     # The SVG chart is hand-rolled; styling stays offline-safe.
     assert ".usage-trend" in dashboard_css
@@ -976,6 +993,7 @@ def test_dashboard_payload_uses_dynamic_codex_allowance_windows(tmp_path: Path) 
         db_path=db_path,
         allowance_path=tmp_path / "allowance.json",
         codex_home=codex_home,
+        limit_history_path=tmp_path / "limit-history.json",
     )
 
     assert payload["allowance_configured"] is True
@@ -987,6 +1005,14 @@ def test_dashboard_payload_uses_dynamic_codex_allowance_windows(tmp_path: Path) 
         ("five_hour", 0.6),
         ("weekly", 0.9),
     ]
+
+    # Building the payload records the Codex snapshot into the limit history,
+    # and the payload exposes that history for burn-down analytics.
+    history = payload["provider_limit_history"]
+    assert isinstance(history, list) and len(history) == 1
+    assert history[0]["provider"] == "openai"
+    assert {window["key"] for window in history[0]["windows"]} == {"five_hour", "weekly"}
+    assert (tmp_path / "limit-history.json").exists()
 
 
 def test_dashboard_payload_exposes_claude_limit_windows(tmp_path: Path) -> None:
@@ -1017,6 +1043,7 @@ def test_dashboard_payload_exposes_claude_limit_windows(tmp_path: Path) -> None:
         allowance_path=tmp_path / "allowance.json",
         codex_home=codex_home,
         claude_limits_path=claude_limits_path,
+        limit_history_path=tmp_path / "limit-history.json",
     )
 
     anthropic_limits = payload["provider_limit_snapshots"]["anthropic"]
@@ -1055,6 +1082,7 @@ def test_dashboard_server_usage_api_refreshes_aggregate_rows(tmp_path: Path) -> 
         api_token="test-token",
         context_api_enabled=True,
         refresh_lock=threading.Lock(),
+        limit_history_path=tmp_path / "limit-history.json",
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1163,6 +1191,7 @@ def test_dashboard_server_usage_row_api_loads_full_aggregate_row(tmp_path: Path)
         api_token="test-token",
         context_api_enabled=True,
         refresh_lock=threading.Lock(),
+        limit_history_path=tmp_path / "limit-history.json",
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1258,6 +1287,7 @@ def test_dashboard_server_usage_api_switches_history_scope(tmp_path: Path) -> No
         api_token="test-token",
         context_api_enabled=True,
         refresh_lock=threading.Lock(),
+        limit_history_path=tmp_path / "limit-history.json",
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1343,6 +1373,7 @@ def test_dashboard_server_returns_json_for_sqlite_errors(tmp_path: Path, monkeyp
         api_token="test-token",
         context_api_enabled=True,
         refresh_lock=threading.Lock(),
+        limit_history_path=tmp_path / "limit-history.json",
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1386,6 +1417,7 @@ def test_dashboard_server_can_disable_context_api(tmp_path: Path) -> None:
         api_token="test-token",
         context_api_enabled=False,
         refresh_lock=threading.Lock(),
+        limit_history_path=tmp_path / "limit-history.json",
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1673,6 +1705,7 @@ def test_dashboard_server_usage_api_filters_by_date_range(tmp_path: Path) -> Non
         api_token="test-token",
         context_api_enabled=True,
         refresh_lock=threading.Lock(),
+        limit_history_path=tmp_path / "limit-history.json",
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

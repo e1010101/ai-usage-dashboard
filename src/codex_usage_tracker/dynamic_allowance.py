@@ -10,9 +10,11 @@ from typing import Any
 
 from codex_usage_tracker.adapters.codex_jsonl import find_session_logs
 from codex_usage_tracker.allowance import AllowanceWindow, parse_windows
+from codex_usage_tracker.limit_history import record_limit_history
 from codex_usage_tracker.paths import (
     DEFAULT_CLAUDE_LIMITS_PATH,
     DEFAULT_CLAUDE_SESSION_META_PATH,
+    DEFAULT_LIMIT_HISTORY_PATH,
 )
 
 CLAUDE_LIMITS_SCHEMA = "codex-usage-tracker-claude-limits-v1"
@@ -186,6 +188,12 @@ def write_claude_statusline_snapshot(
     )
     if not windows:
         raise ValueError("Claude status-line payload did not include rate_limits")
+    record_limit_history(
+        "anthropic",
+        windows,
+        captured_at=captured,
+        path=path.expanduser().with_name(DEFAULT_LIMIT_HISTORY_PATH.name),
+    )
     source: dict[str, Any] = {
         "name": "Local Claude Code status-line snapshot",
         "captured_at": captured,

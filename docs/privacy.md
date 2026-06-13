@@ -31,6 +31,8 @@ Codex usage-limit support reads only local Codex JSONL `payload.rate_limits` met
 
 Claude usage-limit support reads a sanitized local snapshot written by the Claude Code status-line wrapper installed by `ai-usage-dashboard install-claude-limits-statusline`. The snapshot stores only provider identity, remaining percentages, reset timestamps, and source metadata. It does not persist the full status-line JSON, transcript path, prompts, assistant messages, or tool output.
 
+Limit burn-down analytics append the same sanitized window values to a local history file (`~/.codex-usage-tracker/limit-history.json`). Each entry stores only provider identity, capture timestamp, window key, remaining percentage, and reset timestamp; consecutive duplicates are skipped and the file is capped at a fixed number of entries. No transcript or prompt content reaches this file.
+
 ## On-Demand Context
 
 `usage_call_context`, `ai-usage-dashboard context`, and the `serve-dashboard` context endpoint read a single source JSONL file only when explicitly requested. Returned context is redacted for common secret patterns and capped in size.

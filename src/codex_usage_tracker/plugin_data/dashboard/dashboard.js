@@ -51,6 +51,7 @@
     let allowanceWindows = Array.isArray(initialPayload.allowance_windows) ? initialPayload.allowance_windows : [];
     let allowanceError = initialPayload.allowance_error || '';
     let providerLimitSnapshots = initialPayload.provider_limit_snapshots || {};
+    let providerLimitHistory = Array.isArray(initialPayload.provider_limit_history) ? initialPayload.provider_limit_history : [];
     let rateCardError = initialPayload.rate_card_error || '';
     let projectMetadataPrivacy = initialPayload.project_metadata_privacy || { mode: initialPayload.privacy_mode || 'normal' };
     let parserDiagnostics = initialPayload.parser_diagnostics || {};
@@ -124,6 +125,8 @@
     const effortBreakdownEl = document.getElementById('effortBreakdown');
     const projectLeaderboardBlockEl = document.getElementById('projectLeaderboardBlock');
     const projectLeaderboardEl = document.getElementById('projectLeaderboard');
+    const limitBurndownBlockEl = document.getElementById('limitBurndownBlock');
+    const limitBurndownEl = document.getElementById('limitBurndown');
     let rowByRecordId = new Map();
     let threadAttachmentByRecordId = new Map();
     const expandedThreads = new Set();
@@ -548,6 +551,7 @@
         if (resets) items.push(['Allowance resets', resets]);
         if (allowanceError) items.push(['Allowance error', allowanceError]);
         if (rateCardError) items.push(['Rate-card error', rateCardError]);
+        pushLimitAnalyticsItems(items, 'openai');
         const notApplicable = rows.filter(row => row.usage_credit_confidence === 'not_applicable').length;
         if (notApplicable && visibleProviders.size > 1) {
           items.push(['Not applicable', `${number.format(notApplicable)} visible rows are outside Codex credit rates`]);
@@ -573,6 +577,7 @@
           items.push(['Limit snapshot', limitSetupHints.anthropic]);
         }
         if (snapshot.error) items.push(['Snapshot error', snapshot.error]);
+        pushLimitAnalyticsItems(items, 'anthropic');
         groups.push({ provider: 'anthropic', label: providerTabLabel('anthropic'), items });
       }
       const globalItems = [];
@@ -797,6 +802,152 @@
         <div class="trend-legend">${legend}</div>
       `;
     }
+    const limitWindowDurations = { five_hour: 5 * 3600000, weekly: 7 * 86400000 };
+    function limitHistorySeries(provider, windowKey) {
+      const samples = [];
+      for (const entry of providerLimitHistory) {
+        if (entry.provider !== provider) continue;
+        const t = Date.parse(entry.captured_at || '');
+        if (!Number.isFinite(t)) continue;
+        const windows = Array.isArray(entry.windows) ? entry.windows : [];
+        const window = windows.find(candidate => candidate && candidate.key === windowKey);
+        if (!window) continue;
+        const remaining = Number(window.remaining_percent);
+        if (!Number.isFinite(remaining)) continue;
+        samples.push({ t, pct: remaining, resetAt: window.reset_at || '' });
+      }
+      samples.sort((a, b) => a.t - b.t);
+      return samples;
+    }
+    function currentWindowSegment(samples) {
+      if (!samples.length) return [];
+      let start = samples.length - 1;
+      while (start > 0) {
+        const earlier = samples[start - 1];
+        const later = samples[start];
+        if (earlier.resetAt && later.resetAt && earlier.resetAt !== later.resetAt) break;
+        if (earlier.pct < later.pct - 0.02) break;
+        start -= 1;
+      }
+      return samples.slice(start);
+    }
+    function limitForecast(segment, resetAtMs) {
+      if (segment.length < 2) return null;
+      const first = segment[0];
+      const last = segment[segment.length - 1];
+      const spanMs = last.t - first.t;
+      if (spanMs < 10 * 60 * 1000) return null;
+      const drop = first.pct - last.pct;
+      if (drop < 0.005) return { state: 'idle' };
+      const ratePerMs = drop / spanMs;
+      const etaMs = last.t + last.pct / ratePerMs;
+      if (Number.isFinite(resetAtMs) && etaMs >= resetAtMs) return { state: 'safe', etaMs };
+      return { state: 'exhausts', etaMs };
+    }
+    function humanizeDuration(ms) {
+      if (!(ms > 0)) return 'now';
+      const minutes = ms / 60000;
+      if (minutes < 60) return `${Math.max(1, Math.round(minutes))}m`;
+      const hours = minutes / 60;
+      if (hours < 48) return `${hours.toFixed(1)}h`;
+      return `${(hours / 24).toFixed(1)}d`;
+    }
+    function limitForecastText(forecast) {
+      if (!forecast) return '';
+      if (forecast.state === 'idle') return 'no recent burn';
+      if (forecast.state === 'safe') return 'resets before exhaustion at current pace';
+      return `~${humanizeDuration(forecast.etaMs - Date.now())} to exhaustion at current pace`;
+    }
+    function windowAttributionText(provider, window) {
+      const duration = limitWindowDurations[window.key];
+      const resetMs = window.reset_at ? Date.parse(window.reset_at) : NaN;
+      if (!duration || !Number.isFinite(resetMs)) return '';
+      const startMs = resetMs - duration;
+      const nowMs = Date.now();
+      const totals = new Map();
+      let total = 0;
+      for (const row of data) {
+        if (row.source_provider !== provider) continue;
+        const t = Date.parse(row.event_timestamp || '');
+        if (!Number.isFinite(t) || t < startMs || t > nowMs) continue;
+        const tokens = Number(row.total_tokens || 0);
+        total += tokens;
+        const key = row.project_name || 'Unknown project';
+        totals.set(key, (totals.get(key) || 0) + tokens);
+      }
+      if (!total) return '';
+      return [...totals.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 2)
+        .map(([project, tokens]) => `${truncate(project, 24)} ${pct(tokens / total)}`)
+        .join(' · ');
+    }
+    function pushLimitAnalyticsItems(items, provider) {
+      const snapshot = providerLimitSnapshot(provider);
+      for (const window of snapshotWindows(snapshot)) {
+        const label = limitWindowDisplayLabel(window);
+        const segment = currentWindowSegment(limitHistorySeries(provider, window.key));
+        const resetAtMs = window.reset_at ? Date.parse(window.reset_at) : NaN;
+        const forecastText = limitForecastText(limitForecast(segment, resetAtMs));
+        if (forecastText) items.push([`${label} pace`, forecastText]);
+        const drivers = windowAttributionText(provider, window);
+        if (drivers) items.push([`${label} window drivers`, `${drivers} (from loaded rows)`]);
+      }
+    }
+    function burndownSparkline(segment) {
+      const width = 120;
+      const height = 28;
+      const first = segment[0];
+      const last = segment[segment.length - 1];
+      const span = Math.max(last.t - first.t, 1);
+      const points = segment.map(sample => {
+        const x = 4 + ((sample.t - first.t) / span) * (width - 8);
+        const y = height - 4 - clamp(sample.pct, 0, 1) * (height - 8);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      return `
+        <svg class="burn-spark" viewBox="0 0 ${width} ${height}" aria-hidden="true">
+          <polyline class="burn-line" points="${points}"></polyline>
+        </svg>
+      `;
+    }
+    function renderLimitBurndown() {
+      const seriesList = [];
+      for (const provider of ['openai', 'anthropic']) {
+        const snapshot = providerLimitSnapshot(provider);
+        for (const window of snapshotWindows(snapshot)) {
+          const segment = currentWindowSegment(limitHistorySeries(provider, window.key));
+          if (segment.length < 2) continue;
+          const resetAtMs = window.reset_at ? Date.parse(window.reset_at) : NaN;
+          seriesList.push({
+            provider,
+            window,
+            segment,
+            forecast: limitForecast(segment, resetAtMs),
+          });
+        }
+      }
+      if (!seriesList.length) {
+        limitBurndownBlockEl.hidden = true;
+        limitBurndownEl.innerHTML = '';
+        return;
+      }
+      limitBurndownBlockEl.hidden = false;
+      limitBurndownEl.innerHTML = seriesList.map(series => {
+        const label = `${providerShortName(series.provider)} ${limitWindowDisplayLabel(series.window)}`;
+        const current = limitWindowDisplayValue(series.window);
+        const forecastText = limitForecastText(series.forecast);
+        const sampleNote = `${number.format(series.segment.length)} snapshots this window`;
+        return `
+          <div class="burn-row" title="${escapeHtml(`${label}: ${sampleNote}.`)}">
+            <span class="burn-label">${escapeHtml(label)}</span>
+            ${burndownSparkline(series.segment)}
+            <span class="burn-value">${escapeHtml(current)}</span>
+            <span class="burn-forecast">${escapeHtml(forecastText || sampleNote)}</span>
+          </div>
+        `;
+      }).join('');
+    }
     function hideTrendTooltip() {
       trendTooltipEl.hidden = true;
       trendTooltipEl.textContent = '';
@@ -953,6 +1104,7 @@
       renderUsageTrend(rows, dateRange);
       renderEffortBreakdown(rows);
       renderProjectLeaderboard(rows, previousRows);
+      renderLimitBurndown();
     }
     function rebuildSelectOptions(select, values, label) {
       const previous = select.value;
@@ -2498,6 +2650,7 @@
       allowanceWindows = Array.isArray(nextPayload.allowance_windows) ? nextPayload.allowance_windows : [];
       allowanceError = nextPayload.allowance_error || '';
       providerLimitSnapshots = nextPayload.provider_limit_snapshots || {};
+      providerLimitHistory = Array.isArray(nextPayload.provider_limit_history) ? nextPayload.provider_limit_history : [];
       rateCardError = nextPayload.rate_card_error || '';
       parserDiagnostics = nextPayload.parser_diagnostics || {};
       projectMetadataPrivacy = nextPayload.project_metadata_privacy || { mode: nextPayload.privacy_mode || 'normal' };
