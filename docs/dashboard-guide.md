@@ -18,16 +18,16 @@ ai-usage-dashboard refresh --source all
 ai-usage-dashboard serve-dashboard --source all --open
 ```
 
-Use `ai-usage-dashboard serve-dashboard --open` for the default Codex-only dashboard. Use `--source claude-code --claude-home ~/.claude` for a Claude Code-only dashboard.
+Use `ai-usage-dashboard serve-dashboard --open` for the default dashboard, which indexes Codex and Claude Code logs. Use `--source codex` or `--source claude-code` for a single-provider dashboard.
 
-`Codex Remaining` is populated from local Codex JSONL `rate_limits` snapshots when available. For optional manual allowance context, initialize a local template and copy values from Codex Usage or `/status`:
+The Codex line of the `Usage Limits` card is populated from local Codex JSONL `rate_limits` snapshots when available. For optional manual allowance context, initialize a local template and copy values from Codex Usage or `/status`:
 
 ```bash
 ai-usage-dashboard init-allowance
 ai-usage-dashboard parse-allowance "5h 79% 6:50 PM Weekly 33% Jun 7"
 ```
 
-`Claude Remaining` on the Claude Code tab is populated from a sanitized Claude Code status-line snapshot. Claude Code sends `rate_limits` to status-line commands after API responses for plans that expose those limits. To capture those values without storing transcript text, install the tracker wrapper once:
+The Claude line of the `Usage Limits` card is populated from a sanitized Claude Code status-line snapshot. Claude Code sends `rate_limits` to status-line commands after API responses for plans that expose those limits. To capture those values without storing transcript text, install the tracker wrapper once:
 
 ```bash
 ai-usage-dashboard install-claude-limits-statusline
@@ -83,8 +83,10 @@ The dashboard opens in `Insights` view. This view is designed to answer "what ne
 Use `Calls` view when you want to inspect individual model calls.
 
 - The header stays compact: refresh controls on the right, and bracket-tag status chips (for example `[LIVE]`, `[STATIC]`) on the left. Exact refresh time, pricing source, and credit-rate source live in hover titles so live refreshes do not reflow the page. The decorative prompt line under the window dots echoes the active time filter and provider scope.
-- The top cards include cached input, uncached input, Codex credit usage, and provider-specific remaining usage. The Codex tab shows `Codex Remaining`; the Claude Code tab shows `Claude Remaining` when a status-line snapshot is available.
-- Provider tabs are the primary source switch. `Overview` shows all visible providers together, while `Codex` and `Claude Code` tabs keep provider-specific labels and explanations in scope.
+- The top cards are universal and provider-neutral: `Visible Calls`, `Total Tokens`, `Input Tokens`, `Cache Tokens`, `Output Tokens`, `Reasoning Tokens`, `Estimated Cost`, and `Usage Limits`. The labels never change with provider scope; provider tabs change which rows are in scope, not what the cards mean.
+- `Usage Limits` shows remaining capacity. In `Overview` it shows one concise line per visible provider (for example `Codex 5h 72% · weekly 41%`); in a provider tab it shows only that provider's windows. Missing snapshots render as `No snapshots` or `<Provider> no snapshot`.
+- A `Provider Details` strip below the top cards holds provider-specific metrics: Codex credits and credit-rate coverage, credit-rate source and fetched timestamp, allowance reset timestamps, the Claude status-line snapshot source and captured timestamp, and pricing caveats.
+- Provider tabs are the primary source switch. `Overview` shows all visible providers together, while `Codex` and `Claude Code` tabs keep provider-specific explanations in scope.
 - The `Provider` and `App` filters are still available for narrower source filtering, such as `openai / codex` and `anthropic / claude-code`.
 - The `Confidence` filter separates exact cost, estimated cost, unpriced cost, exact credit-rate matches, inferred credit mappings, user credit overrides, missing credit rates, and rows where Codex credits are not applicable.
 - The `Time` filter supports all time, today, this week, last 7 days, this month, and custom calendar ranges. It defaults to `This week`. Presets are relative to your browser's local date. Custom ranges use inclusive start and end dates.
@@ -111,12 +113,12 @@ Useful interpretation notes:
 
 - `Last call total` is the token usage for the selected model call.
 - `Session cumulative` is the running total the source logged for that session at the time of that call.
-- `Cached input` and `Uncached input` are split so cache behavior is visible without storing transcript text.
-- In `Claude Code`, the dashboard relabels these cards and detail rows to `Cache Read` and `Direct Input`. Claude totals include direct input, cache writes, cache reads, and output, so very large totals are often mostly cache-read reuse rather than fresh prompt growth.
+- `Input Tokens` counts fresh input that was not served from cache; `Cache Tokens` combines cache reads with cache writes, and its hover title splits the two buckets. Call Details still shows the raw provider input buckets (`Cache read` and `Direct input` for Claude Code rows).
+- Claude totals include direct input, cache writes, cache reads, and output, so very large totals are often mostly cache-read reuse rather than fresh prompt growth.
 - A cost with `*` means the pricing row is marked as a best-guess estimate.
 - Codex credits are estimated from aggregate input, cached-input, and output token counters for Codex/OpenAI rows only. Direct model matches use the bundled OpenAI Codex rate-card snapshot; inferred labels are marked estimated, local credit-rate overrides are marked user-provided, and Claude Code rows are marked not applicable.
-- `Codex Remaining` is read from local Codex `rate_limits` snapshots when available, without contacting a remote account API. It is shown only for Codex/OpenAI usage. Configure `~/.codex-usage-tracker/allowance.json` with values copied from Codex Settings > Usage, the Codex Usage dashboard, or `/status` when you want to override a dynamic window, add exact credit totals, or fill in missing local snapshot data.
-- `Claude Remaining` is read from `~/.codex-usage-tracker/claude-limits.json`, which can be filled automatically by `install-claude-limits-statusline`. It stores only percentages, reset timestamps, and source metadata.
+- The Codex line of `Usage Limits` is read from local Codex `rate_limits` snapshots when available, without contacting a remote account API. Configure `~/.codex-usage-tracker/allowance.json` with values copied from Codex Settings > Usage, the Codex Usage dashboard, or `/status` when you want to override a dynamic window, add exact credit totals, or fill in missing local snapshot data.
+- The Claude line of `Usage Limits` is read from `~/.codex-usage-tracker/claude-limits.json`, which can be filled automatically by `install-claude-limits-statusline`. It stores only percentages, reset timestamps, and source metadata.
 
 ## Threads View
 

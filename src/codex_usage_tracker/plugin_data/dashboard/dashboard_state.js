@@ -67,7 +67,7 @@
     set(params, 'from', state.dateStart);
     set(params, 'to', state.dateEnd);
     set(params, 'history', state.historyScope === 'all' ? 'all' : '');
-    set(params, 'sort', state.sort && state.sort !== 'attention' ? state.sort : '');
+    set(params, 'sort', state.sort && state.sort !== 'time' ? state.sort : '');
     set(params, 'direction', ALLOWED_DIRECTIONS.has(state.direction) ? state.direction : '');
     set(params, 'preset', state.preset);
     set(params, 'page', state.page && Number(state.page) > 1 ? String(Math.floor(Number(state.page))) : '');

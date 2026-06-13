@@ -506,7 +506,7 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "Estimated Cost" in dashboard
     assert "AI Usage Dashboard" in dashboard
     assert "providerTabs" in dashboard
-    assert "providerSummary" in dashboard
+    assert "providerSummary" not in dashboard
     assert "source_provider" in dashboard
     assert "source_app" in dashboard
     assert "Source" in dashboard
@@ -514,26 +514,24 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "appEl" in dashboard_js
     assert "renderProviderTabs" in dashboard_js
     assert "Claude Code" in dashboard_js
-    assert "Codex Remaining" in dashboard
-    assert "Claude Remaining" in dashboard_js
     assert "providerLimitSnapshots" in dashboard_js
-    assert "currentProviderLimits" in dashboard_js
-    assert "Local Claude Code status-line snapshot" in dashboard_js
-    assert "Cache Read" in dashboard
-    assert "Direct Input" in dashboard_js
+    assert "Cache read" in dashboard_js
+    assert "Direct input" in dashboard_js
     assert "source_app" in csv_text
     assert "cache_creation_input_tokens" in csv_text
     assert "estimated_cost_usd" in dashboard
     assert "pricing_snapshot" in dashboard
     assert "rates_fingerprint" in dashboard
-    assert "Uncached Input" in dashboard
-    assert "uncachedTokens" in dashboard
-    assert "Codex Credits" in dashboard
-    assert "Codex Remaining" in dashboard
+    assert "Input Tokens" in dashboard
+    assert "inputTokens" in dashboard
+    assert "Cache Tokens" in dashboard
+    assert "Output Tokens" in dashboard
+    assert "Usage Limits" in dashboard
+    assert "usageLimits" in dashboard
+    assert "providerDetails" in dashboard
+    assert "Provider Details" in dashboard
     assert "Price Coverage" not in dashboard
     assert "priceCoverage" not in dashboard_surface
-    assert "usageCredits" in dashboard
-    assert "allowanceImpact" in dashboard
     assert "usage_credits" in dashboard
     assert "parser_diagnostics" in dashboard
     assert "parserDiagnostics" in dashboard_js
@@ -580,7 +578,7 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "applicableCreditRows" in dashboard_js
     assert "credit-not-applicable" in dashboard
     assert "pricingStatus === 'credit-not-applicable'" in dashboard_js
-    assert "Credit rates:" in dashboard_js
+    assert "Credit rates" in dashboard_js
     assert "Codex allowance usage" in dashboard_js
     assert "Highest Codex credits" in dashboard
     assert "Estimated Tokens" not in dashboard
@@ -675,7 +673,11 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "Credit model" in dashboard_js
     assert 'data-sort-key="time"' in dashboard
     assert 'data-sort-key="thread"' in dashboard
-    assert '<option value="attention" selected>Needs attention</option>' in dashboard
+    assert '<option value="time" selected>Newest calls</option>' in dashboard
+    assert '<option value="attention" selected>Needs attention</option>' not in dashboard
+    assert "sortEl.value || 'time'" in dashboard_js
+    assert "sortKey = 'time';" in dashboard_js
+    assert "state.sort !== 'time'" in dashboard_state_js
     assert '<option value="usage">Highest Codex credits</option>' in dashboard
 
     pricing_path.write_text(
@@ -699,6 +701,85 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     generate_dashboard(db_path=db_path, output_path=dashboard_path, pricing_path=pricing_path)
     updated_dashboard = dashboard_path.read_text(encoding="utf-8")
     assert "Pricing snapshot changed since the previous dashboard render" in updated_dashboard
+
+
+def test_dashboard_universal_summary_cards_contract(tmp_path: Path) -> None:
+    codex_home = _make_codex_home(tmp_path)
+    db_path = tmp_path / "usage.sqlite3"
+    refresh_usage_index(codex_home=codex_home, db_path=db_path)
+    dashboard_path = tmp_path / "dashboard.html"
+    generate_dashboard(db_path=db_path, output_path=dashboard_path)
+
+    dashboard = dashboard_path.read_text(encoding="utf-8")
+    asset_dir = tmp_path / "codex-usage-tracker-assets"
+    dashboard_js = (asset_dir / "dashboard.js").read_text(encoding="utf-8")
+
+    # Universal labels render in the contract order inside the top-card block.
+    cards_block = dashboard.split('<div class="cards">', 1)[1].split('<section id="providerDetails"', 1)[0]
+    universal_labels = [
+        "Visible Calls",
+        "Total Tokens",
+        "Input Tokens",
+        "Cache Tokens",
+        "Output Tokens",
+        "Reasoning Tokens",
+        "Estimated Cost",
+        "Usage Limits",
+    ]
+    positions = [cards_block.index(f"<span>{label}</span>") for label in universal_labels]
+    assert positions == sorted(positions)
+    assert len(positions) == 8
+
+    # Provider-specific top-card strings are gone from the card block and template.
+    for stale_label in (
+        "Codex Credits",
+        "Codex Remaining",
+        "Claude Remaining",
+        "Cache Read",
+        "Direct Input",
+        "Cached Input",
+        "Uncached Input",
+        "data-anthropic-label",
+    ):
+        assert stale_label not in cards_block
+    assert "data-anthropic-label" not in dashboard
+    assert "Codex Credits" not in dashboard
+    assert "Cached Input" not in dashboard
+    assert "Uncached Input" not in dashboard
+
+    # The provider-specific details section exists below the cards.
+    assert '<section id="providerDetails"' in dashboard
+    assert "Provider Details" in dashboard
+    assert "providerDetailGroups" in dashboard
+
+    # Summary math and limits rendering are centralized and provider-neutral.
+    assert "buildUniversalSummary" in dashboard_js
+    assert "buildProviderDetails" in dashboard_js
+    assert "buildUsageLimits" in dashboard_js
+    assert "usageLimitsCardText" in dashboard_js
+    assert "limitSetupHints" in dashboard_js
+    assert "No snapshots" in dashboard_js
+    assert "no snapshot" in dashboard_js
+    assert "No data in range" in dashboard_js
+    assert "Cache read:" in dashboard_js
+    assert "Cache creation:" in dashboard_js
+
+    # Provider profiles no longer relabel the top cards.
+    for profile_key in (
+        "totalLabel",
+        "reasoningLabel",
+        "creditsLabel",
+        "creditsUnavailable",
+        "remainingLabel",
+        "remainingUnavailable",
+    ):
+        assert profile_key not in dashboard_js
+
+    # Usage Limits is excluded from the count-up animation.
+    assert (
+        "COUNT_UP_IDS = ['visibleCalls', 'totalTokens', 'inputTokens', 'cacheTokens', "
+        "'outputTokens', 'reasoningTokens', 'estimatedCost']"
+    ) in dashboard_js
 
 
 def test_dashboard_payload_contract_includes_analysis_metadata(tmp_path: Path) -> None:
