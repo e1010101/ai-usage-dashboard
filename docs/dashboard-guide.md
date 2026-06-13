@@ -71,8 +71,9 @@ Below the summary cards and Provider Details strip, the `Usage Analytics` sectio
 - When a bounded time filter is active, each numeric summary card shows a delta against the preceding equal-length period (for example, `This week` compares against the same span of the prior week). Deltas are computed from loaded rows.
 - `Reasoning Effort` breaks down calls, tokens, cost, and reasoning-output share per recorded effort level. Effort is captured going forward from status-line metadata, so older calls may be excluded; a coverage note shows how many visible calls carry an effort value.
 - `Top Projects` ranks the visible projects by token volume with estimated cost and, when a prior period exists, a token-volume trend.
+- `Limits Burn-down` plots remaining-capacity sparklines per provider window from the local limit-snapshot history (`~/.codex-usage-tracker/limit-history.json`) and forecasts time to exhaustion at the current pace. The Provider Details strip adds matching `pace` and `window drivers` rows — the projects consuming the active 5h/weekly window, computed from loaded rows.
 
-All analytics are derived client-side from the same filtered aggregate rows the tables use — no extra data is collected.
+The trend chart, effort, and project analytics are derived client-side from the same filtered aggregate rows the tables use. Burn-down uses the sanitized limit history, which stores only window percentages and timestamps.
 
 ## Insights View
 

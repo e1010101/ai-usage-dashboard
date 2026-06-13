@@ -105,8 +105,9 @@ ai-usage-dashboard serve-dashboard --source all --open</code></pre>
       <li>When a bounded time filter is active, each numeric summary card shows a delta against the preceding equal-length period, computed from loaded rows.</li>
       <li><code>Reasoning Effort</code> breaks down calls, tokens, cost, and reasoning-output share per recorded effort level, with a coverage note when older calls predate effort capture.</li>
       <li><code>Top Projects</code> ranks visible projects by token volume with estimated cost and a prior-period trend when available.</li>
+      <li><code>Limits Burn-down</code> plots remaining-capacity sparklines per provider window from the local limit-snapshot history and forecasts time to exhaustion at the current pace. Matching <code>pace</code> and <code>window drivers</code> rows appear in <code>Provider Details</code>.</li>
     </ul>
-    <p>All analytics are derived client-side from the same filtered aggregate rows the tables use; no extra data is collected.</p>
+    <p>The trend chart, effort, and project analytics are derived client-side from the same filtered aggregate rows the tables use. Burn-down uses a sanitized local history (<code>~/.codex-usage-tracker/limit-history.json</code>) storing only window percentages and timestamps.</p>
 
     <h2>Insights View</h2>
     <img src="assets/dashboard-insights.png" alt="Insights view with ranked attention cards, investigation presets, and top threads by attention score.">
