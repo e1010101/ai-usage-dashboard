@@ -375,7 +375,12 @@
       cursor: pointer;
       outline: none;
     }
-    .usage-trend .trend-bar:hover rect,
+    .usage-trend .trend-bar:hover rect {
+      opacity: 0.45;
+    }
+    .usage-trend .trend-bar rect:hover {
+      opacity: 1;
+    }
     .usage-trend .trend-bar:focus-visible rect {
       opacity: 0.78;
     }
