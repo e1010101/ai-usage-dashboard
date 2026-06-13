@@ -832,6 +832,12 @@ def test_dashboard_usage_analytics_contract(tmp_path: Path) -> None:
     assert "vs prior" in dashboard_js
     # Live refresh fetches the prior period too, so deltas have data to compare.
     assert "previousPeriodRange(range)" in dashboard_js
+    # Hovering or focusing a chart bar shows a custom tooltip; no native <title> delay.
+    assert "trendTooltip" in dashboard
+    assert "showTrendTooltip" in dashboard_js
+    assert "data-tooltip" in dashboard_js
+    assert "<title>" not in dashboard_js
+    assert ".trend-tooltip" in dashboard_css
     assert "notation: 'compact'" in dashboard_format_js
     # The SVG chart is hand-rolled; styling stays offline-safe.
     assert ".usage-trend" in dashboard_css

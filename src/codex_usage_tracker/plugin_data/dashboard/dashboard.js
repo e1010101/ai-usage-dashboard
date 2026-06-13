@@ -117,6 +117,7 @@
     const providerDetailGroupsEl = document.getElementById('providerDetailGroups');
     const usageAnalyticsEl = document.getElementById('usageAnalytics');
     const usageTrendEl = document.getElementById('usageTrend');
+    const trendTooltipEl = document.getElementById('trendTooltip');
     const trendMetricTokensEl = document.getElementById('trendMetricTokens');
     const trendMetricCostEl = document.getElementById('trendMetricCost');
     const effortBreakdownBlockEl = document.getElementById('effortBreakdownBlock');
@@ -772,7 +773,7 @@
             .filter(provider => bucket[provider] > 0)
             .map(provider => `${trendProviderLabel(provider)} ${trendValueText(bucket[provider])}`),
         ].join(' · ');
-        return `<g class="trend-bar"><title>${escapeHtml(tooltip)}</title>${segments}</g>`;
+        return `<g class="trend-bar" tabindex="0" role="img" data-tooltip="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}">${segments}</g>`;
       }).join('');
       const labelIndexes = count <= 2 ? [...trend.buckets.keys()] : [0, Math.floor((count - 1) / 2), count - 1];
       const labels = [...new Set(labelIndexes)].map(index => {
@@ -796,6 +797,50 @@
         <div class="trend-legend">${legend}</div>
       `;
     }
+    function hideTrendTooltip() {
+      trendTooltipEl.hidden = true;
+      trendTooltipEl.textContent = '';
+    }
+    function showTrendTooltip(bar, clientX, clientY) {
+      const text = bar.dataset.tooltip || '';
+      if (!text) {
+        hideTrendTooltip();
+        return;
+      }
+      trendTooltipEl.textContent = text;
+      trendTooltipEl.hidden = false;
+      const wrap = trendTooltipEl.parentElement;
+      const wrapRect = wrap.getBoundingClientRect();
+      let x;
+      let y;
+      if (clientX === undefined || clientY === undefined) {
+        const barRect = bar.getBoundingClientRect();
+        x = barRect.left + barRect.width / 2 - wrapRect.left;
+        y = barRect.top - wrapRect.top;
+      } else {
+        x = clientX - wrapRect.left;
+        y = clientY - wrapRect.top;
+      }
+      const tipRect = trendTooltipEl.getBoundingClientRect();
+      const left = clamp(x + 12, 0, Math.max(wrapRect.width - tipRect.width - 4, 0));
+      const top = Math.max(y - tipRect.height - 10, 0);
+      trendTooltipEl.style.left = `${Math.round(left)}px`;
+      trendTooltipEl.style.top = `${Math.round(top)}px`;
+    }
+    usageTrendEl.addEventListener('mousemove', event => {
+      const bar = event.target.closest('.trend-bar');
+      if (!bar || !usageTrendEl.contains(bar)) {
+        hideTrendTooltip();
+        return;
+      }
+      showTrendTooltip(bar, event.clientX, event.clientY);
+    });
+    usageTrendEl.addEventListener('mouseleave', hideTrendTooltip);
+    usageTrendEl.addEventListener('focusin', event => {
+      const bar = event.target.closest('.trend-bar');
+      if (bar) showTrendTooltip(bar);
+    });
+    usageTrendEl.addEventListener('focusout', hideTrendTooltip);
     function buildEffortBreakdown(rows) {
       const map = new Map();
       for (const row of rows) {
