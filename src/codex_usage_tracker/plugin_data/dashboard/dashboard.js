@@ -764,16 +764,18 @@
       const barWidth = Math.max(Math.min(slot * 0.72, 48), 1.5);
       const bars = trend.buckets.map((bucket, index) => {
         const x = padX + index * slot + (slot - barWidth) / 2;
+        const bucketLabel = trendBucketLabel(bucket.ms, trend.unit);
         let y = height - padBottom;
         const segments = trendProviderOrder.map(provider => {
           const value = bucket[provider];
           if (!value) return '';
           const segHeight = Math.max((value / max) * innerHeight, 0.5);
           y -= segHeight;
-          return `<rect data-provider="${provider}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${segHeight.toFixed(2)}"></rect>`;
+          const segmentTooltip = `${bucketLabel} · ${trendProviderLabel(provider)}: ${trendValueText(value)} (${pct(value / bucket.total)} of ${trendValueText(bucket.total)})`;
+          return `<rect data-provider="${provider}" data-tooltip="${escapeHtml(segmentTooltip)}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${segHeight.toFixed(2)}"></rect>`;
         }).join('');
         const tooltip = [
-          `${trendBucketLabel(bucket.ms, trend.unit)}: ${trendValueText(bucket.total)}`,
+          `${bucketLabel}: ${trendValueText(bucket.total)}`,
           ...trendProviderOrder
             .filter(provider => bucket[provider] > 0)
             .map(provider => `${trendProviderLabel(provider)} ${trendValueText(bucket[provider])}`),
@@ -979,12 +981,12 @@
       trendTooltipEl.style.top = `${Math.round(top)}px`;
     }
     usageTrendEl.addEventListener('mousemove', event => {
-      const bar = event.target.closest('.trend-bar');
-      if (!bar || !usageTrendEl.contains(bar)) {
+      const segment = event.target.closest('[data-tooltip]');
+      if (!segment || !usageTrendEl.contains(segment)) {
         hideTrendTooltip();
         return;
       }
-      showTrendTooltip(bar, event.clientX, event.clientY);
+      showTrendTooltip(segment, event.clientX, event.clientY);
     });
     usageTrendEl.addEventListener('mouseleave', hideTrendTooltip);
     usageTrendEl.addEventListener('focusin', event => {

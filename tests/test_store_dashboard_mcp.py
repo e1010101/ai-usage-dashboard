@@ -838,6 +838,10 @@ def test_dashboard_usage_analytics_contract(tmp_path: Path) -> None:
     assert "data-tooltip" in dashboard_js
     assert "<title>" not in dashboard_js
     assert ".trend-tooltip" in dashboard_css
+    # Each stacked segment carries its own provider tooltip; hovering a color
+    # shows that provider's share, not the whole-bar breakdown.
+    assert "segmentTooltip" in dashboard_js
+    assert "closest('[data-tooltip]')" in dashboard_js
     # Limit history feeds burn-down sparklines, pace forecasts, and window attribution.
     assert "Limits Burn-down" in dashboard
     assert "limitBurndown" in dashboard
