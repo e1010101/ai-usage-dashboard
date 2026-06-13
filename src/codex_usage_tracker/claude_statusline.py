@@ -56,7 +56,7 @@ def install_claude_limits_statusline(
 
     existing_command = _optional_nonempty_str(status_line_config.get("command"))
     already_installed = bool(existing_command and _is_tracker_statusline_command(existing_command))
-    if already_installed and not force:
+    if existing_command is not None and already_installed and not force:
         return ClaudeStatusLineInstallResult(
             claude_home=expanded_home,
             settings_path=settings_path,

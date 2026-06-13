@@ -2,6 +2,7 @@
     const dashboardData = window.CodexUsageDashboardData;
     const {
       number,
+      compact,
       money,
       credits,
       pct,
@@ -50,6 +51,7 @@
     let allowanceWindows = Array.isArray(initialPayload.allowance_windows) ? initialPayload.allowance_windows : [];
     let allowanceError = initialPayload.allowance_error || '';
     let providerLimitSnapshots = initialPayload.provider_limit_snapshots || {};
+    let providerLimitHistory = Array.isArray(initialPayload.provider_limit_history) ? initialPayload.provider_limit_history : [];
     let rateCardError = initialPayload.rate_card_error || '';
     let projectMetadataPrivacy = initialPayload.project_metadata_privacy || { mode: initialPayload.privacy_mode || 'normal' };
     let parserDiagnostics = initialPayload.parser_diagnostics || {};
@@ -114,6 +116,17 @@
     const usageLimitsEl = document.getElementById('usageLimits');
     const providerDetailsEl = document.getElementById('providerDetails');
     const providerDetailGroupsEl = document.getElementById('providerDetailGroups');
+    const usageAnalyticsEl = document.getElementById('usageAnalytics');
+    const usageTrendEl = document.getElementById('usageTrend');
+    const trendTooltipEl = document.getElementById('trendTooltip');
+    const trendMetricTokensEl = document.getElementById('trendMetricTokens');
+    const trendMetricCostEl = document.getElementById('trendMetricCost');
+    const effortBreakdownBlockEl = document.getElementById('effortBreakdownBlock');
+    const effortBreakdownEl = document.getElementById('effortBreakdown');
+    const projectLeaderboardBlockEl = document.getElementById('projectLeaderboardBlock');
+    const projectLeaderboardEl = document.getElementById('projectLeaderboard');
+    const limitBurndownBlockEl = document.getElementById('limitBurndownBlock');
+    const limitBurndownEl = document.getElementById('limitBurndown');
     let rowByRecordId = new Map();
     let threadAttachmentByRecordId = new Map();
     const expandedThreads = new Set();
@@ -149,6 +162,7 @@
       anthropic: 'Capture Claude Code statusLine rate_limits to show 5h and 7d remaining usage.',
     };
     const limitStaleAfterMs = 24 * 60 * 60 * 1000;
+    let trendMetric = 'tokens';
     let activeView = ['calls', 'threads', 'insights'].includes(initialState.view) ? initialState.view : 'insights';
     let sortKey = optionValueExists(sortEl, initialState.sort) ? initialState.sort : sortEl.value || 'time';
     let sortDirection = ['asc', 'desc'].includes(initialState.direction) ? initialState.direction : defaultSortDirection(sortKey);
@@ -537,6 +551,7 @@
         if (resets) items.push(['Allowance resets', resets]);
         if (allowanceError) items.push(['Allowance error', allowanceError]);
         if (rateCardError) items.push(['Rate-card error', rateCardError]);
+        pushLimitAnalyticsItems(items, 'openai');
         const notApplicable = rows.filter(row => row.usage_credit_confidence === 'not_applicable').length;
         if (notApplicable && visibleProviders.size > 1) {
           items.push(['Not applicable', `${number.format(notApplicable)} visible rows are outside Codex credit rates`]);
@@ -562,6 +577,7 @@
           items.push(['Limit snapshot', limitSetupHints.anthropic]);
         }
         if (snapshot.error) items.push(['Snapshot error', snapshot.error]);
+        pushLimitAnalyticsItems(items, 'anthropic');
         groups.push({ provider: 'anthropic', label: providerTabLabel('anthropic'), items });
       }
       const globalItems = [];
@@ -591,6 +607,504 @@
           </dl>
         </div>
       `).join('');
+    }
+    function previousPeriodRange(range) {
+      if (!range || !range.active || range.invalid || !range.start || !range.endExclusive) return null;
+      const endMs = Math.min(range.endExclusive.getTime(), Date.now());
+      const spanMs = endMs - range.start.getTime();
+      if (spanMs <= 0) return null;
+      return {
+        active: true,
+        invalid: false,
+        start: new Date(range.start.getTime() - spanMs),
+        endExclusive: range.start,
+        label: 'Prior period',
+      };
+    }
+    function deltaDisplay(current, previous) {
+      const cur = Number(current) || 0;
+      const prev = Number(previous) || 0;
+      if (!cur && !prev) return null;
+      if (!prev) return { text: 'new', trend: 'up' };
+      const change = (cur - prev) / prev;
+      const magnitude = Math.abs(change * 100);
+      const trend = magnitude < 0.5 ? 'flat' : change > 0 ? 'up' : 'down';
+      const formatted = magnitude >= 100 ? number.format(Math.round(magnitude)) : magnitude.toFixed(1);
+      return { text: `${change >= 0 ? '+' : '-'}${formatted}%`, trend };
+    }
+    function updateCardDeltas(summary, previousSummary) {
+      const fields = [
+        ['visibleCalls', value => number.format(value)],
+        ['totalTokens', value => number.format(value)],
+        ['inputTokens', value => number.format(value)],
+        ['cacheTokens', value => number.format(value)],
+        ['outputTokens', value => number.format(value)],
+        ['reasoningTokens', value => number.format(value)],
+        ['estimatedCost', value => money(value)],
+      ];
+      fields.forEach(([key, formatValue]) => {
+        const el = document.getElementById(`${key}Delta`);
+        if (!el) return;
+        const info = previousSummary ? deltaDisplay(summary[key], previousSummary[key]) : null;
+        if (!info) {
+          el.hidden = true;
+          el.textContent = '';
+          el.removeAttribute('data-trend');
+          el.title = '';
+          return;
+        }
+        el.hidden = false;
+        el.textContent = `${info.text} vs prior`;
+        el.dataset.trend = info.trend;
+        el.title = `Preceding equal-length period: ${formatValue(previousSummary[key])}. Computed from loaded rows.`;
+      });
+    }
+    const trendHourFormat = new Intl.DateTimeFormat([], { hour: 'numeric' });
+    const trendDayFormat = new Intl.DateTimeFormat([], { month: 'short', day: 'numeric' });
+    const trendMonthFormat = new Intl.DateTimeFormat([], { month: 'short', year: 'numeric' });
+    const trendProviderOrder = ['openai', 'anthropic', 'other'];
+    function trendProviderKey(row) {
+      if (row.source_provider === 'openai') return 'openai';
+      if (row.source_provider === 'anthropic') return 'anthropic';
+      return 'other';
+    }
+    function trendProviderLabel(key) {
+      if (key === 'openai') return providerShortName('openai');
+      if (key === 'anthropic') return providerShortName('anthropic');
+      return 'Other';
+    }
+    function trendUnitFor(startMs, endMs) {
+      const spanDays = (endMs - startMs) / 86400000;
+      if (spanDays <= 3.05) return 'hour';
+      if (spanDays <= 130) return 'day';
+      if (spanDays <= 740) return 'week';
+      return 'month';
+    }
+    function trendBucketDate(date, unit) {
+      if (unit === 'hour') return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours());
+      if (unit === 'week') return weekStart(localDay(date));
+      if (unit === 'month') return new Date(date.getFullYear(), date.getMonth(), 1);
+      return localDay(date);
+    }
+    function nextTrendBucket(date, unit) {
+      if (unit === 'hour') return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours() + 1);
+      if (unit === 'week') return addDays(date, 7);
+      if (unit === 'month') return new Date(date.getFullYear(), date.getMonth() + 1, 1);
+      return addDays(date, 1);
+    }
+    function trendBucketLabel(ms, unit) {
+      const date = new Date(ms);
+      if (unit === 'hour') return trendHourFormat.format(date);
+      if (unit === 'month') return trendMonthFormat.format(date);
+      return trendDayFormat.format(date);
+    }
+    function trendValueText(value) {
+      return trendMetric === 'cost' ? money(value) : compact(value);
+    }
+    function buildUsageTrend(rows, dateRange) {
+      const metricValue = trendMetric === 'cost'
+        ? row => Number(row.estimated_cost_usd || 0)
+        : row => Number(row.total_tokens || 0);
+      const stamps = [];
+      for (const row of rows) {
+        const ts = row.event_timestamp ? new Date(row.event_timestamp) : null;
+        if (ts && !Number.isNaN(ts.getTime())) stamps.push({ ts, row });
+      }
+      if (!stamps.length) return null;
+      const nowMs = Date.now();
+      let startMs = dateRange && dateRange.active && !dateRange.invalid && dateRange.start
+        ? dateRange.start.getTime()
+        : Math.min(...stamps.map(stamp => stamp.ts.getTime()));
+      let endMs = dateRange && dateRange.active && !dateRange.invalid && dateRange.endExclusive
+        ? Math.min(dateRange.endExclusive.getTime(), nowMs + 3600000)
+        : Math.max(...stamps.map(stamp => stamp.ts.getTime())) + 1;
+      if (endMs <= startMs) endMs = startMs + 1;
+      const unit = trendUnitFor(startMs, endMs);
+      const buckets = new Map();
+      let cursor = trendBucketDate(new Date(startMs), unit);
+      let guard = 0;
+      while (cursor.getTime() < endMs && guard < 400) {
+        buckets.set(cursor.getTime(), { openai: 0, anthropic: 0, other: 0 });
+        cursor = nextTrendBucket(cursor, unit);
+        guard += 1;
+      }
+      const seenProviders = new Set();
+      for (const stamp of stamps) {
+        const key = trendBucketDate(stamp.ts, unit).getTime();
+        const bucket = buckets.get(key);
+        if (!bucket) continue;
+        const provider = trendProviderKey(stamp.row);
+        bucket[provider] += metricValue(stamp.row);
+        seenProviders.add(provider);
+      }
+      const ordered = [...buckets.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([ms, sums]) => ({ ms, ...sums, total: sums.openai + sums.anthropic + sums.other }));
+      return {
+        unit,
+        buckets: ordered,
+        providers: trendProviderOrder.filter(provider => seenProviders.has(provider)),
+      };
+    }
+    function renderUsageTrend(rows, dateRange) {
+      const trend = buildUsageTrend(rows, dateRange);
+      if (!trend || !trend.buckets.length || !trend.buckets.some(bucket => bucket.total > 0)) {
+        usageTrendEl.innerHTML = '<p class="trend-empty">No usage in range to chart.</p>';
+        return;
+      }
+      const width = 960;
+      const height = 180;
+      const padTop = 16;
+      const padBottom = 24;
+      const padX = 8;
+      const innerHeight = height - padTop - padBottom;
+      const max = Math.max(...trend.buckets.map(bucket => bucket.total));
+      const count = trend.buckets.length;
+      const slot = (width - padX * 2) / count;
+      const barWidth = Math.max(Math.min(slot * 0.72, 48), 1.5);
+      const bars = trend.buckets.map((bucket, index) => {
+        const x = padX + index * slot + (slot - barWidth) / 2;
+        let y = height - padBottom;
+        const segments = trendProviderOrder.map(provider => {
+          const value = bucket[provider];
+          if (!value) return '';
+          const segHeight = Math.max((value / max) * innerHeight, 0.5);
+          y -= segHeight;
+          return `<rect data-provider="${provider}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${segHeight.toFixed(2)}"></rect>`;
+        }).join('');
+        const tooltip = [
+          `${trendBucketLabel(bucket.ms, trend.unit)}: ${trendValueText(bucket.total)}`,
+          ...trendProviderOrder
+            .filter(provider => bucket[provider] > 0)
+            .map(provider => `${trendProviderLabel(provider)} ${trendValueText(bucket[provider])}`),
+        ].join(' · ');
+        return `<g class="trend-bar" tabindex="0" role="img" data-tooltip="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}">${segments}</g>`;
+      }).join('');
+      const labelIndexes = count <= 2 ? [...trend.buckets.keys()] : [0, Math.floor((count - 1) / 2), count - 1];
+      const labels = [...new Set(labelIndexes)].map(index => {
+        const anchor = index === 0 ? 'start' : index === count - 1 ? 'end' : 'middle';
+        const x = padX + index * slot + slot / 2;
+        return `<text x="${x.toFixed(2)}" y="${height - 7}" text-anchor="${anchor}">${escapeHtml(trendBucketLabel(trend.buckets[index].ms, trend.unit))}</text>`;
+      }).join('');
+      const midY = padTop + innerHeight / 2;
+      const legend = trend.providers.map(provider => `
+        <span class="trend-legend-item"><span class="trend-swatch" data-provider="${provider}"></span>${escapeHtml(trendProviderLabel(provider))}</span>
+      `).join('');
+      const unitNoun = { hour: 'hourly', day: 'daily', week: 'weekly', month: 'monthly' }[trend.unit] || trend.unit;
+      usageTrendEl.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(`${unitNoun} ${trendMetric === 'cost' ? 'estimated cost' : 'total tokens'}; peak ${trendValueText(max)}`)}">
+          <line class="trend-grid" x1="${padX}" y1="${midY.toFixed(2)}" x2="${width - padX}" y2="${midY.toFixed(2)}"></line>
+          <line class="trend-grid" x1="${padX}" y1="${padTop}" x2="${width - padX}" y2="${padTop}"></line>
+          <text x="${padX}" y="${padTop - 5}">${escapeHtml(trendValueText(max))}</text>
+          ${bars}
+          ${labels}
+        </svg>
+        <div class="trend-legend">${legend}</div>
+      `;
+    }
+    const limitWindowDurations = { five_hour: 5 * 3600000, weekly: 7 * 86400000 };
+    function limitHistorySeries(provider, windowKey) {
+      const samples = [];
+      for (const entry of providerLimitHistory) {
+        if (entry.provider !== provider) continue;
+        const t = Date.parse(entry.captured_at || '');
+        if (!Number.isFinite(t)) continue;
+        const windows = Array.isArray(entry.windows) ? entry.windows : [];
+        const window = windows.find(candidate => candidate && candidate.key === windowKey);
+        if (!window) continue;
+        const remaining = Number(window.remaining_percent);
+        if (!Number.isFinite(remaining)) continue;
+        samples.push({ t, pct: remaining, resetAt: window.reset_at || '' });
+      }
+      samples.sort((a, b) => a.t - b.t);
+      return samples;
+    }
+    function currentWindowSegment(samples) {
+      if (!samples.length) return [];
+      let start = samples.length - 1;
+      while (start > 0) {
+        const earlier = samples[start - 1];
+        const later = samples[start];
+        if (earlier.resetAt && later.resetAt && earlier.resetAt !== later.resetAt) break;
+        if (earlier.pct < later.pct - 0.02) break;
+        start -= 1;
+      }
+      return samples.slice(start);
+    }
+    function limitForecast(segment, resetAtMs) {
+      if (segment.length < 2) return null;
+      const first = segment[0];
+      const last = segment[segment.length - 1];
+      const spanMs = last.t - first.t;
+      if (spanMs < 10 * 60 * 1000) return null;
+      const drop = first.pct - last.pct;
+      if (drop < 0.005) return { state: 'idle' };
+      const ratePerMs = drop / spanMs;
+      const etaMs = last.t + last.pct / ratePerMs;
+      if (Number.isFinite(resetAtMs) && etaMs >= resetAtMs) return { state: 'safe', etaMs };
+      return { state: 'exhausts', etaMs };
+    }
+    function humanizeDuration(ms) {
+      if (!(ms > 0)) return 'now';
+      const minutes = ms / 60000;
+      if (minutes < 60) return `${Math.max(1, Math.round(minutes))}m`;
+      const hours = minutes / 60;
+      if (hours < 48) return `${hours.toFixed(1)}h`;
+      return `${(hours / 24).toFixed(1)}d`;
+    }
+    function limitForecastText(forecast) {
+      if (!forecast) return '';
+      if (forecast.state === 'idle') return 'no recent burn';
+      if (forecast.state === 'safe') return 'resets before exhaustion at current pace';
+      return `~${humanizeDuration(forecast.etaMs - Date.now())} to exhaustion at current pace`;
+    }
+    function windowAttributionText(provider, window) {
+      const duration = limitWindowDurations[window.key];
+      const resetMs = window.reset_at ? Date.parse(window.reset_at) : NaN;
+      if (!duration || !Number.isFinite(resetMs)) return '';
+      const startMs = resetMs - duration;
+      const nowMs = Date.now();
+      const totals = new Map();
+      let total = 0;
+      for (const row of data) {
+        if (row.source_provider !== provider) continue;
+        const t = Date.parse(row.event_timestamp || '');
+        if (!Number.isFinite(t) || t < startMs || t > nowMs) continue;
+        const tokens = Number(row.total_tokens || 0);
+        total += tokens;
+        const key = row.project_name || 'Unknown project';
+        totals.set(key, (totals.get(key) || 0) + tokens);
+      }
+      if (!total) return '';
+      return [...totals.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 2)
+        .map(([project, tokens]) => `${truncate(project, 24)} ${pct(tokens / total)}`)
+        .join(' · ');
+    }
+    function pushLimitAnalyticsItems(items, provider) {
+      const snapshot = providerLimitSnapshot(provider);
+      for (const window of snapshotWindows(snapshot)) {
+        const label = limitWindowDisplayLabel(window);
+        const segment = currentWindowSegment(limitHistorySeries(provider, window.key));
+        const resetAtMs = window.reset_at ? Date.parse(window.reset_at) : NaN;
+        const forecastText = limitForecastText(limitForecast(segment, resetAtMs));
+        if (forecastText) items.push([`${label} pace`, forecastText]);
+        const drivers = windowAttributionText(provider, window);
+        if (drivers) items.push([`${label} window drivers`, `${drivers} (from loaded rows)`]);
+      }
+    }
+    function burndownSparkline(segment) {
+      const width = 120;
+      const height = 28;
+      const first = segment[0];
+      const last = segment[segment.length - 1];
+      const span = Math.max(last.t - first.t, 1);
+      const points = segment.map(sample => {
+        const x = 4 + ((sample.t - first.t) / span) * (width - 8);
+        const y = height - 4 - clamp(sample.pct, 0, 1) * (height - 8);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      return `
+        <svg class="burn-spark" viewBox="0 0 ${width} ${height}" aria-hidden="true">
+          <polyline class="burn-line" points="${points}"></polyline>
+        </svg>
+      `;
+    }
+    function renderLimitBurndown() {
+      const seriesList = [];
+      for (const provider of ['openai', 'anthropic']) {
+        const snapshot = providerLimitSnapshot(provider);
+        for (const window of snapshotWindows(snapshot)) {
+          const segment = currentWindowSegment(limitHistorySeries(provider, window.key));
+          if (segment.length < 2) continue;
+          const resetAtMs = window.reset_at ? Date.parse(window.reset_at) : NaN;
+          seriesList.push({
+            provider,
+            window,
+            segment,
+            forecast: limitForecast(segment, resetAtMs),
+          });
+        }
+      }
+      if (!seriesList.length) {
+        limitBurndownBlockEl.hidden = true;
+        limitBurndownEl.innerHTML = '';
+        return;
+      }
+      limitBurndownBlockEl.hidden = false;
+      limitBurndownEl.innerHTML = seriesList.map(series => {
+        const label = `${providerShortName(series.provider)} ${limitWindowDisplayLabel(series.window)}`;
+        const current = limitWindowDisplayValue(series.window);
+        const forecastText = limitForecastText(series.forecast);
+        const sampleNote = `${number.format(series.segment.length)} snapshots this window`;
+        return `
+          <div class="burn-row" title="${escapeHtml(`${label}: ${sampleNote}.`)}">
+            <span class="burn-label">${escapeHtml(label)}</span>
+            ${burndownSparkline(series.segment)}
+            <span class="burn-value">${escapeHtml(current)}</span>
+            <span class="burn-forecast">${escapeHtml(forecastText || sampleNote)}</span>
+          </div>
+        `;
+      }).join('');
+    }
+    function hideTrendTooltip() {
+      trendTooltipEl.hidden = true;
+      trendTooltipEl.textContent = '';
+    }
+    function showTrendTooltip(bar, clientX, clientY) {
+      const text = bar.dataset.tooltip || '';
+      if (!text) {
+        hideTrendTooltip();
+        return;
+      }
+      trendTooltipEl.textContent = text;
+      trendTooltipEl.hidden = false;
+      const wrap = trendTooltipEl.parentElement;
+      const wrapRect = wrap.getBoundingClientRect();
+      let x;
+      let y;
+      if (clientX === undefined || clientY === undefined) {
+        const barRect = bar.getBoundingClientRect();
+        x = barRect.left + barRect.width / 2 - wrapRect.left;
+        y = barRect.top - wrapRect.top;
+      } else {
+        x = clientX - wrapRect.left;
+        y = clientY - wrapRect.top;
+      }
+      const tipRect = trendTooltipEl.getBoundingClientRect();
+      const left = clamp(x + 12, 0, Math.max(wrapRect.width - tipRect.width - 4, 0));
+      const top = Math.max(y - tipRect.height - 10, 0);
+      trendTooltipEl.style.left = `${Math.round(left)}px`;
+      trendTooltipEl.style.top = `${Math.round(top)}px`;
+    }
+    usageTrendEl.addEventListener('mousemove', event => {
+      const bar = event.target.closest('.trend-bar');
+      if (!bar || !usageTrendEl.contains(bar)) {
+        hideTrendTooltip();
+        return;
+      }
+      showTrendTooltip(bar, event.clientX, event.clientY);
+    });
+    usageTrendEl.addEventListener('mouseleave', hideTrendTooltip);
+    usageTrendEl.addEventListener('focusin', event => {
+      const bar = event.target.closest('.trend-bar');
+      if (bar) showTrendTooltip(bar);
+    });
+    usageTrendEl.addEventListener('focusout', hideTrendTooltip);
+    function buildEffortBreakdown(rows) {
+      const map = new Map();
+      for (const row of rows) {
+        if (!row.effort) continue;
+        if (!map.has(row.effort)) {
+          map.set(row.effort, { effort: row.effort, calls: 0, tokens: 0, cost: 0, outputTokens: 0, reasoningTokens: 0 });
+        }
+        const entry = map.get(row.effort);
+        entry.calls += 1;
+        entry.tokens += Number(row.total_tokens || 0);
+        entry.cost += Number(row.estimated_cost_usd || 0);
+        entry.outputTokens += Number(row.output_tokens || 0);
+        entry.reasoningTokens += Number(row.reasoning_output_tokens || 0);
+      }
+      return [...map.values()].sort((a, b) => b.tokens - a.tokens);
+    }
+    function renderEffortBreakdown(rows) {
+      const entries = buildEffortBreakdown(rows);
+      if (!entries.length) {
+        effortBreakdownBlockEl.hidden = true;
+        effortBreakdownEl.innerHTML = '';
+        return;
+      }
+      effortBreakdownBlockEl.hidden = false;
+      const withEffort = entries.reduce((sum, entry) => sum + entry.calls, 0);
+      const coverageNote = withEffort < rows.length
+        ? `<p class="analytics-note">${number.format(withEffort)} of ${number.format(rows.length)} visible calls have a recorded effort.</p>`
+        : '';
+      effortBreakdownEl.innerHTML = `
+        <table class="analytics-table">
+          <thead><tr><th>Effort</th><th class="num">Calls</th><th class="num">Tokens</th><th class="num">Cost</th><th class="num">Reasoning share</th></tr></thead>
+          <tbody>
+            ${entries.map(entry => `
+              <tr>
+                <td>${escapeHtml(entry.effort)}</td>
+                <td class="num">${number.format(entry.calls)}</td>
+                <td class="num" title="${escapeHtml(number.format(entry.tokens))}">${escapeHtml(compact(entry.tokens))}</td>
+                <td class="num">${pricingConfigured ? escapeHtml(money(entry.cost)) : 'n/a'}</td>
+                <td class="num">${entry.outputTokens > 0 ? escapeHtml(pct(entry.reasoningTokens / entry.outputTokens)) : '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ${coverageNote}
+      `;
+    }
+    function buildProjectLeaderboard(rows, previousRows) {
+      const groupKey = row => row.project_name || 'Unknown project';
+      const totals = new Map();
+      for (const row of rows) {
+        const key = groupKey(row);
+        if (!totals.has(key)) totals.set(key, { project: key, calls: 0, tokens: 0, cost: 0 });
+        const entry = totals.get(key);
+        entry.calls += 1;
+        entry.tokens += Number(row.total_tokens || 0);
+        entry.cost += Number(row.estimated_cost_usd || 0);
+      }
+      const previousTokens = new Map();
+      if (previousRows) {
+        for (const row of previousRows) {
+          const key = groupKey(row);
+          previousTokens.set(key, (previousTokens.get(key) || 0) + Number(row.total_tokens || 0));
+        }
+      }
+      return [...totals.values()]
+        .sort((a, b) => b.tokens - a.tokens)
+        .slice(0, 6)
+        .map(entry => ({
+          ...entry,
+          delta: previousRows ? deltaDisplay(entry.tokens, previousTokens.get(entry.project) || 0) : null,
+        }));
+    }
+    function renderProjectLeaderboard(rows, previousRows) {
+      const entries = buildProjectLeaderboard(rows, previousRows);
+      if (!entries.length) {
+        projectLeaderboardBlockEl.hidden = true;
+        projectLeaderboardEl.innerHTML = '';
+        return;
+      }
+      projectLeaderboardBlockEl.hidden = false;
+      const showTrend = Boolean(previousRows);
+      projectLeaderboardEl.innerHTML = `
+        <table class="analytics-table">
+          <thead><tr><th>Project</th><th class="num">Calls</th><th class="num">Tokens</th><th class="num">Cost</th>${showTrend ? '<th class="num">Trend</th>' : ''}</tr></thead>
+          <tbody>
+            ${entries.map(entry => `
+              <tr>
+                <td title="${escapeHtml(entry.project)}">${escapeHtml(truncate(entry.project, 36))}</td>
+                <td class="num">${number.format(entry.calls)}</td>
+                <td class="num" title="${escapeHtml(number.format(entry.tokens))}">${escapeHtml(compact(entry.tokens))}</td>
+                <td class="num">${pricingConfigured ? escapeHtml(money(entry.cost)) : 'n/a'}</td>
+                ${showTrend ? `<td class="num"><span class="analytics-trend" data-trend="${entry.delta ? escapeHtml(entry.delta.trend) : 'flat'}">${entry.delta ? escapeHtml(entry.delta.text) : '-'}</span></td>` : ''}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ${showTrend ? '<p class="analytics-note">Trend compares token volume with the preceding equal-length period.</p>' : ''}
+      `;
+    }
+    function renderUsageAnalytics(rows, dateRange, previousRows) {
+      if (!rows.length) {
+        usageAnalyticsEl.hidden = true;
+        return;
+      }
+      usageAnalyticsEl.hidden = false;
+      trendMetricTokensEl.setAttribute('aria-pressed', trendMetric === 'tokens' ? 'true' : 'false');
+      trendMetricCostEl.setAttribute('aria-pressed', trendMetric === 'cost' ? 'true' : 'false');
+      trendMetricCostEl.disabled = !pricingConfigured;
+      trendMetricCostEl.title = pricingConfigured ? '' : 'Run ai-usage-dashboard update-pricing to chart estimated cost.';
+      renderUsageTrend(rows, dateRange);
+      renderEffortBreakdown(rows);
+      renderProjectLeaderboard(rows, previousRows);
+      renderLimitBurndown();
     }
     function rebuildSelectOptions(select, values, label) {
       const previous = select.value;
@@ -1495,10 +2009,15 @@
       rowsEl.textContent = '';
       updateSortControls();
       const summary = buildUniversalSummary(rows);
+      const previousRange = previousPeriodRange(dateRange);
+      const previousRows = previousRange ? filtered(previousRange) : null;
+      const previousSummary = previousRows ? buildUniversalSummary(previousRows) : null;
       document.getElementById('visibleCalls').textContent = number.format(summary.visibleCalls);
       renderProviderTabs(rows);
       updateSummaryCards(rows, summary);
+      updateCardDeltas(summary, previousSummary);
       renderProviderDetails(rows, summary);
+      renderUsageAnalytics(rows, dateRange, previousRows);
       insightsViewEl.setAttribute('aria-pressed', activeView === 'insights' ? 'true' : 'false');
       callsViewEl.setAttribute('aria-pressed', activeView === 'calls' ? 'true' : 'false');
       threadsViewEl.setAttribute('aria-pressed', activeView === 'threads' ? 'true' : 'false');
@@ -2131,6 +2650,7 @@
       allowanceWindows = Array.isArray(nextPayload.allowance_windows) ? nextPayload.allowance_windows : [];
       allowanceError = nextPayload.allowance_error || '';
       providerLimitSnapshots = nextPayload.provider_limit_snapshots || {};
+      providerLimitHistory = Array.isArray(nextPayload.provider_limit_history) ? nextPayload.provider_limit_history : [];
       rateCardError = nextPayload.rate_card_error || '';
       parserDiagnostics = nextPayload.parser_diagnostics || {};
       projectMetadataPrivacy = nextPayload.project_metadata_privacy || { mode: nextPayload.privacy_mode || 'normal' };
@@ -2174,7 +2694,12 @@
         });
         const range = currentDateRange();
         if (range.active && !range.invalid) {
-          if (range.start) params.set('since', range.start.toISOString());
+          const priorRange = previousPeriodRange(range);
+          if (priorRange) {
+            params.set('since', priorRange.start.toISOString());
+          } else if (range.start) {
+            params.set('since', range.start.toISOString());
+          }
           if (range.endExclusive) params.set('until', range.endExclusive.toISOString());
         }
         const response = await fetch(`/api/usage?${params.toString()}`, {
@@ -2223,6 +2748,16 @@
     insightsViewEl.addEventListener('click', () => setView('insights'));
     callsViewEl.addEventListener('click', () => setView('calls'));
     threadsViewEl.addEventListener('click', () => setView('threads'));
+    trendMetricTokensEl.addEventListener('click', () => {
+      if (trendMetric === 'tokens') return;
+      trendMetric = 'tokens';
+      render();
+    });
+    trendMetricCostEl.addEventListener('click', () => {
+      if (trendMetric === 'cost') return;
+      trendMetric = 'cost';
+      render();
+    });
     clearPresetEl.addEventListener('click', clearPreset);
     copyViewLinkEl.addEventListener('click', copyCurrentViewLink);
     exportVisibleEl.addEventListener('click', exportCurrentRows);

@@ -782,6 +782,88 @@ def test_dashboard_universal_summary_cards_contract(tmp_path: Path) -> None:
     ) in dashboard_js
 
 
+def test_dashboard_usage_analytics_contract(tmp_path: Path) -> None:
+    codex_home = _make_codex_home(tmp_path)
+    db_path = tmp_path / "usage.sqlite3"
+    refresh_usage_index(codex_home=codex_home, db_path=db_path)
+    dashboard_path = tmp_path / "dashboard.html"
+    generate_dashboard(db_path=db_path, output_path=dashboard_path)
+
+    dashboard = dashboard_path.read_text(encoding="utf-8")
+    asset_dir = tmp_path / "codex-usage-tracker-assets"
+    dashboard_js = (asset_dir / "dashboard.js").read_text(encoding="utf-8")
+    dashboard_format_js = (asset_dir / "dashboard_format.js").read_text(encoding="utf-8")
+    dashboard_css = (asset_dir / "dashboard.css").read_text(encoding="utf-8")
+
+    # The analytics section renders below the provider details strip.
+    assert dashboard.index('<section id="providerDetails"') < dashboard.index('<section id="usageAnalytics"')
+    assert "Usage Analytics" in dashboard
+    assert "usageTrend" in dashboard
+    assert "trendMetricTokens" in dashboard
+    assert "trendMetricCost" in dashboard
+    assert "Reasoning Effort" in dashboard
+    assert "Top Projects" in dashboard
+
+    # Every numeric universal card carries a prior-period delta slot; Usage Limits does not.
+    for delta_id in (
+        "visibleCallsDelta",
+        "totalTokensDelta",
+        "inputTokensDelta",
+        "cacheTokensDelta",
+        "outputTokensDelta",
+        "reasoningTokensDelta",
+        "estimatedCostDelta",
+    ):
+        assert delta_id in dashboard
+    assert "usageLimitsDelta" not in dashboard
+
+    # Chart, delta, and analytics builders are centralized in the dashboard script.
+    for symbol in (
+        "previousPeriodRange",
+        "deltaDisplay",
+        "updateCardDeltas",
+        "buildUsageTrend",
+        "renderUsageTrend",
+        "buildEffortBreakdown",
+        "buildProjectLeaderboard",
+        "renderUsageAnalytics",
+    ):
+        assert symbol in dashboard_js
+    assert "vs prior" in dashboard_js
+    # Live refresh fetches the prior period too, so deltas have data to compare.
+    assert "previousPeriodRange(range)" in dashboard_js
+    # Hovering or focusing a chart bar shows a custom tooltip; no native <title> delay.
+    assert "trendTooltip" in dashboard
+    assert "showTrendTooltip" in dashboard_js
+    assert "data-tooltip" in dashboard_js
+    assert "<title>" not in dashboard_js
+    assert ".trend-tooltip" in dashboard_css
+    # Limit history feeds burn-down sparklines, pace forecasts, and window attribution.
+    assert "Limits Burn-down" in dashboard
+    assert "limitBurndown" in dashboard
+    assert "provider_limit_history" in dashboard
+    for symbol in (
+        "limitHistorySeries",
+        "currentWindowSegment",
+        "limitForecast",
+        "limitForecastText",
+        "windowAttributionText",
+        "renderLimitBurndown",
+        "burndownSparkline",
+    ):
+        assert symbol in dashboard_js
+    assert "window drivers" in dashboard_js
+    assert "to exhaustion at current pace" in dashboard_js
+    assert ".burn-spark" in dashboard_css
+    assert "notation: 'compact'" in dashboard_format_js
+    # The SVG chart is hand-rolled; styling stays offline-safe.
+    assert ".usage-trend" in dashboard_css
+    assert ".analytics-columns" in dashboard_css
+    assert ".card-delta" in dashboard_css
+    assert "url(" not in dashboard_css
+    assert "http" not in dashboard_css
+
+
 def test_dashboard_payload_contract_includes_analysis_metadata(tmp_path: Path) -> None:
     codex_home = _make_codex_home(tmp_path)
     db_path = tmp_path / "usage.sqlite3"
@@ -911,6 +993,7 @@ def test_dashboard_payload_uses_dynamic_codex_allowance_windows(tmp_path: Path) 
         db_path=db_path,
         allowance_path=tmp_path / "allowance.json",
         codex_home=codex_home,
+        limit_history_path=tmp_path / "limit-history.json",
     )
 
     assert payload["allowance_configured"] is True
@@ -922,6 +1005,14 @@ def test_dashboard_payload_uses_dynamic_codex_allowance_windows(tmp_path: Path) 
         ("five_hour", 0.6),
         ("weekly", 0.9),
     ]
+
+    # Building the payload records the Codex snapshot into the limit history,
+    # and the payload exposes that history for burn-down analytics.
+    history = payload["provider_limit_history"]
+    assert isinstance(history, list) and len(history) == 1
+    assert history[0]["provider"] == "openai"
+    assert {window["key"] for window in history[0]["windows"]} == {"five_hour", "weekly"}
+    assert (tmp_path / "limit-history.json").exists()
 
 
 def test_dashboard_payload_exposes_claude_limit_windows(tmp_path: Path) -> None:
@@ -952,6 +1043,7 @@ def test_dashboard_payload_exposes_claude_limit_windows(tmp_path: Path) -> None:
         allowance_path=tmp_path / "allowance.json",
         codex_home=codex_home,
         claude_limits_path=claude_limits_path,
+        limit_history_path=tmp_path / "limit-history.json",
     )
 
     anthropic_limits = payload["provider_limit_snapshots"]["anthropic"]
@@ -990,6 +1082,7 @@ def test_dashboard_server_usage_api_refreshes_aggregate_rows(tmp_path: Path) -> 
         api_token="test-token",
         context_api_enabled=True,
         refresh_lock=threading.Lock(),
+        limit_history_path=tmp_path / "limit-history.json",
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1098,6 +1191,7 @@ def test_dashboard_server_usage_row_api_loads_full_aggregate_row(tmp_path: Path)
         api_token="test-token",
         context_api_enabled=True,
         refresh_lock=threading.Lock(),
+        limit_history_path=tmp_path / "limit-history.json",
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1193,6 +1287,7 @@ def test_dashboard_server_usage_api_switches_history_scope(tmp_path: Path) -> No
         api_token="test-token",
         context_api_enabled=True,
         refresh_lock=threading.Lock(),
+        limit_history_path=tmp_path / "limit-history.json",
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1278,6 +1373,7 @@ def test_dashboard_server_returns_json_for_sqlite_errors(tmp_path: Path, monkeyp
         api_token="test-token",
         context_api_enabled=True,
         refresh_lock=threading.Lock(),
+        limit_history_path=tmp_path / "limit-history.json",
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1321,6 +1417,7 @@ def test_dashboard_server_can_disable_context_api(tmp_path: Path) -> None:
         api_token="test-token",
         context_api_enabled=False,
         refresh_lock=threading.Lock(),
+        limit_history_path=tmp_path / "limit-history.json",
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1608,6 +1705,7 @@ def test_dashboard_server_usage_api_filters_by_date_range(tmp_path: Path) -> Non
         api_token="test-token",
         context_api_enabled=True,
         refresh_lock=threading.Lock(),
+        limit_history_path=tmp_path / "limit-history.json",
     )
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

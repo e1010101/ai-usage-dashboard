@@ -23,10 +23,12 @@ from codex_usage_tracker.dynamic_allowance import (
     load_dynamic_claude_limit_snapshot,
     load_dynamic_codex_allowance_snapshot,
 )
+from codex_usage_tracker.limit_history import load_limit_history, record_limit_history
 from codex_usage_tracker.paths import (
     DEFAULT_ALLOWANCE_PATH,
     DEFAULT_CLAUDE_LIMITS_PATH,
     DEFAULT_DASHBOARD_PATH,
+    DEFAULT_LIMIT_HISTORY_PATH,
     DEFAULT_PRICING_PATH,
     DEFAULT_PROJECTS_PATH,
     DEFAULT_RATE_CARD_PATH,
@@ -51,6 +53,8 @@ from codex_usage_tracker.store import (
     refresh_metadata,
 )
 from codex_usage_tracker.threads import annotate_thread_attachments
+
+_PAYLOAD_LIMIT_HISTORY_MAX = 500
 
 _COMPACT_DASHBOARD_ROW_FIELDS = (
     "record_id",
@@ -118,6 +122,7 @@ def dashboard_payload(
     privacy_mode: str = "normal",
     include_archived: bool = False,
     compact_rows: bool = False,
+    limit_history_path: Path = DEFAULT_LIMIT_HISTORY_PATH,
 ) -> dict[str, object]:
     """Return aggregate-only dashboard data without rendering HTML."""
 
@@ -142,6 +147,7 @@ def dashboard_payload(
         thresholds_path=thresholds_path,
         projects_path=projects_path,
         include_archived=include_archived,
+        limit_history_path=limit_history_path,
     )
     annotated_rows = _annotate_dashboard_rows(
         rows,
@@ -193,6 +199,10 @@ def dashboard_payload(
             allowance_summary,
             claude_limits,
         ),
+        "provider_limit_history": load_limit_history(
+            limit_history_path,
+            max_entries=_PAYLOAD_LIMIT_HISTORY_MAX,
+        ),
         "rate_card_configured": allowance_summary["rate_card_loaded"],
         "rate_card_error": allowance_summary["rate_card_error"],
         "loaded_row_count": len(rows),
@@ -241,6 +251,7 @@ def dashboard_record_payload(
     projects_path: Path = DEFAULT_PROJECTS_PATH,
     privacy_mode: str = "normal",
     include_archived: bool = False,
+    limit_history_path: Path = DEFAULT_LIMIT_HISTORY_PATH,
 ) -> dict[str, Any] | None:
     """Return one fully annotated aggregate usage row by record id."""
 
@@ -257,6 +268,7 @@ def dashboard_record_payload(
         thresholds_path=thresholds_path,
         projects_path=projects_path,
         include_archived=include_archived,
+        limit_history_path=limit_history_path,
     )
     annotated_rows = _annotate_dashboard_rows(
         [row],
@@ -285,6 +297,7 @@ def generate_dashboard(
     projects_path: Path = DEFAULT_PROJECTS_PATH,
     privacy_mode: str = "normal",
     include_archived: bool = False,
+    limit_history_path: Path = DEFAULT_LIMIT_HISTORY_PATH,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     guide_href = _dashboard_guide_href(output_path)
@@ -310,6 +323,7 @@ def generate_dashboard(
         projects_path=projects_path,
         privacy_mode=privacy_mode,
         include_archived=include_archived,
+        limit_history_path=limit_history_path,
     )
     payload_dict["pricing_snapshot_warning"] = _pricing_snapshot_warning(
         previous_payload, payload_dict
@@ -339,6 +353,7 @@ def _load_dashboard_support(
     thresholds_path: Path,
     projects_path: Path,
     include_archived: bool,
+    limit_history_path: Path = DEFAULT_LIMIT_HISTORY_PATH,
 ):
     pricing = load_pricing_config(pricing_path)
     dynamic_allowance = (
@@ -349,6 +364,13 @@ def _load_dashboard_support(
         if codex_home is not None
         else None
     )
+    if dynamic_allowance and dynamic_allowance.windows:
+        record_limit_history(
+            "openai",
+            dynamic_allowance.windows,
+            captured_at=dynamic_allowance.source.get("captured_at"),
+            path=limit_history_path,
+        )
     allowance = load_allowance_config(
         allowance_path,
         rate_card_path=rate_card_path,

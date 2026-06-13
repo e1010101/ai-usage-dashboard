@@ -98,6 +98,17 @@ ai-usage-dashboard serve-dashboard --source all --open</code></pre>
     <p>The server enables live aggregate refresh and on-demand context loading. Static file mode can still filter, sort, and inspect aggregate fields, but cannot refresh logs or load context.</p>
     <p>The localhost server uses a random per-server token for refresh and context API calls, validates loopback <code>Host</code> and <code>Origin</code> headers, and can run as aggregate-only with <code>ai-usage-dashboard serve-dashboard --no-context-api</code>.</p>
 
+    <h2>Usage Analytics</h2>
+    <p>Below the summary cards and <code>Provider Details</code> strip, the <code>Usage Analytics</code> section charts the visible rows.</p>
+    <ul>
+      <li>The usage-over-time chart stacks tokens (or estimated cost, via the <code>Tokens</code>/<code>Cost</code> toggle) per provider. Buckets adapt to the active time filter: hourly up to three days, then daily, weekly, and monthly.</li>
+      <li>When a bounded time filter is active, each numeric summary card shows a delta against the preceding equal-length period, computed from loaded rows.</li>
+      <li><code>Reasoning Effort</code> breaks down calls, tokens, cost, and reasoning-output share per recorded effort level, with a coverage note when older calls predate effort capture.</li>
+      <li><code>Top Projects</code> ranks visible projects by token volume with estimated cost and a prior-period trend when available.</li>
+      <li><code>Limits Burn-down</code> plots remaining-capacity sparklines per provider window from the local limit-snapshot history and forecasts time to exhaustion at the current pace. Matching <code>pace</code> and <code>window drivers</code> rows appear in <code>Provider Details</code>.</li>
+    </ul>
+    <p>The trend chart, effort, and project analytics are derived client-side from the same filtered aggregate rows the tables use. Burn-down uses a sanitized local history (<code>~/.codex-usage-tracker/limit-history.json</code>) storing only window percentages and timestamps.</p>
+
     <h2>Insights View</h2>
     <img src="assets/dashboard-insights.png" alt="Insights view with ranked attention cards, investigation presets, and top threads by attention score.">
     <p>The dashboard opens in <code>Insights</code> view. It ranks costly threads, Codex allowance usage, low cache reuse, context bloat, unpriced usage, estimated pricing, and reasoning-output spikes from aggregate fields only.</p>

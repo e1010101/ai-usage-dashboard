@@ -56,18 +56,45 @@
       <div id="dateStatusRow" class="filter-status-row" hidden><span id="dateRangeStatus" class="filter-status" aria-live="polite"></span></div>
     </div>
     <div class="cards">
-      <div class="card"><span>Visible Calls</span><strong id="visibleCalls">0</strong></div>
-      <div id="totalTokensCard" class="card"><span>Total Tokens</span><strong id="totalTokens">0</strong></div>
-      <div id="inputTokensCard" class="card"><span>Input Tokens</span><strong id="inputTokens">0</strong></div>
-      <div id="cacheTokensCard" class="card"><span>Cache Tokens</span><strong id="cacheTokens">0</strong></div>
-      <div id="outputTokensCard" class="card"><span>Output Tokens</span><strong id="outputTokens">0</strong></div>
-      <div id="reasoningTokensCard" class="card"><span>Reasoning Tokens</span><strong id="reasoningTokens">0</strong></div>
-      <div class="card"><span>Estimated Cost</span><strong id="estimatedCost">$0.00</strong></div>
+      <div class="card"><span>Visible Calls</span><strong id="visibleCalls">0</strong><span class="card-delta" id="visibleCallsDelta" hidden></span></div>
+      <div id="totalTokensCard" class="card"><span>Total Tokens</span><strong id="totalTokens">0</strong><span class="card-delta" id="totalTokensDelta" hidden></span></div>
+      <div id="inputTokensCard" class="card"><span>Input Tokens</span><strong id="inputTokens">0</strong><span class="card-delta" id="inputTokensDelta" hidden></span></div>
+      <div id="cacheTokensCard" class="card"><span>Cache Tokens</span><strong id="cacheTokens">0</strong><span class="card-delta" id="cacheTokensDelta" hidden></span></div>
+      <div id="outputTokensCard" class="card"><span>Output Tokens</span><strong id="outputTokens">0</strong><span class="card-delta" id="outputTokensDelta" hidden></span></div>
+      <div id="reasoningTokensCard" class="card"><span>Reasoning Tokens</span><strong id="reasoningTokens">0</strong><span class="card-delta" id="reasoningTokensDelta" hidden></span></div>
+      <div class="card"><span>Estimated Cost</span><strong id="estimatedCost">$0.00</strong><span class="card-delta" id="estimatedCostDelta" hidden></span></div>
       <div id="usageLimitsCard" class="card"><span>Usage Limits</span><strong id="usageLimits">No snapshots</strong></div>
     </div>
     <section id="providerDetails" class="provider-details" aria-labelledby="providerDetailsTitle" hidden>
       <h2 id="providerDetailsTitle" class="provider-details-title">Provider Details</h2>
       <div id="providerDetailGroups" class="provider-detail-groups"></div>
+    </section>
+    <section id="usageAnalytics" class="usage-analytics" aria-labelledby="usageAnalyticsTitle" hidden>
+      <div class="analytics-heading">
+        <h2 id="usageAnalyticsTitle" class="analytics-title">Usage Analytics</h2>
+        <div class="segmented trend-metric" role="group" aria-label="Trend chart metric">
+          <button id="trendMetricTokens" type="button" aria-pressed="true">Tokens</button>
+          <button id="trendMetricCost" type="button" aria-pressed="false">Cost</button>
+        </div>
+      </div>
+      <div class="usage-trend-wrap">
+        <div id="usageTrend" class="usage-trend"></div>
+        <div id="trendTooltip" class="trend-tooltip" role="status" hidden></div>
+      </div>
+      <div class="analytics-columns">
+        <div id="effortBreakdownBlock" class="analytics-block" hidden>
+          <h3>Reasoning Effort</h3>
+          <div id="effortBreakdown" class="analytics-table-wrap"></div>
+        </div>
+        <div id="projectLeaderboardBlock" class="analytics-block" hidden>
+          <h3>Top Projects</h3>
+          <div id="projectLeaderboard" class="analytics-table-wrap"></div>
+        </div>
+        <div id="limitBurndownBlock" class="analytics-block" hidden>
+          <h3>Limits Burn-down</h3>
+          <div id="limitBurndown" class="burn-rows"></div>
+        </div>
+      </div>
     </section>
     <section id="insightsPanel" class="insights-panel" aria-labelledby="insightsTitle">
       <div class="insights-layout">
