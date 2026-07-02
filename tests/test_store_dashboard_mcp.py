@@ -6,10 +6,12 @@ import sys
 import threading
 import urllib.error
 import urllib.request
+from dataclasses import replace
 from functools import partial
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+import codex_usage_tracker.dashboard as dashboard_module
 from codex_usage_tracker.context import load_call_context
 from codex_usage_tracker.dashboard import (
     dashboard_payload,
@@ -153,6 +155,32 @@ def test_provider_and_app_filters_work_for_dashboard_queries(tmp_path: Path) -> 
     assert len(claude_rows) == 2
     assert openai_count == 4
     assert {row["group_key"] for row in app_summary} == {"codex", "claude-code"}
+
+
+def test_dashboard_payload_source_summaries_include_sources_outside_loaded_rows(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "usage.sqlite3"
+    codex_event = _synthetic_usage_event("codex-newer", "2026-06-15T12:00:00Z")
+    claude_event = replace(
+        _synthetic_usage_event("claude-older", "2026-06-13T12:00:00Z"),
+        source_file="/tmp/synthetic/claude.jsonl",
+        source_provider="anthropic",
+        source_app="claude-code",
+        source_format="claude-code-jsonl-v1",
+        model="claude-sonnet-4-20250514",
+        effort=None,
+        model_context_window=None,
+    )
+    upsert_usage_events([codex_event, claude_event], db_path=db_path)
+
+    payload = dashboard_payload(db_path=db_path, limit=1)
+
+    assert [row["source_app"] for row in payload["rows"]] == ["codex"]
+    assert {
+        (summary["source_provider"], summary["source_app"])
+        for summary in payload["source_summaries"]
+    } == {("openai", "codex"), ("anthropic", "claude-code")}
 
 
 def test_refresh_reports_skipped_corrupt_token_events(tmp_path: Path) -> None:
@@ -509,10 +537,12 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "providerSummary" not in dashboard
     assert "source_provider" in dashboard
     assert "source_app" in dashboard
+    assert "source_summaries" in dashboard
     assert "Source" in dashboard
     assert "providerEl" in dashboard_js
     assert "appEl" in dashboard_js
     assert "renderProviderTabs" in dashboard_js
+    assert "sourceCatalogRows" in dashboard_js
     assert "Claude Code" in dashboard_js
     assert "providerLimitSnapshots" in dashboard_js
     assert "Cache read" in dashboard_js
@@ -701,6 +731,34 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     generate_dashboard(db_path=db_path, output_path=dashboard_path, pricing_path=pricing_path)
     updated_dashboard = dashboard_path.read_text(encoding="utf-8")
     assert "Pricing snapshot changed since the previous dashboard render" in updated_dashboard
+
+
+def test_generate_dashboard_reuses_assets_when_asset_directory_is_locked(
+    tmp_path: Path, monkeypatch
+) -> None:
+    codex_home = _make_codex_home(tmp_path)
+    db_path = tmp_path / "usage.sqlite3"
+    refresh_usage_index(codex_home=codex_home, db_path=db_path)
+    dashboard_path = tmp_path / "dashboard.html"
+
+    generate_dashboard(db_path=db_path, output_path=dashboard_path)
+    asset_dir = tmp_path / "codex-usage-tracker-assets"
+    assert (asset_dir / "dashboard.css").exists()
+
+    original_rmtree = dashboard_module.shutil.rmtree
+
+    def locked_rmtree(path: object, *args: object, **kwargs: object) -> None:
+        if Path(path) == asset_dir:
+            raise PermissionError("asset directory is being read")
+        original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(dashboard_module.shutil, "rmtree", locked_rmtree)
+
+    generate_dashboard(db_path=db_path, output_path=dashboard_path)
+
+    dashboard = dashboard_path.read_text(encoding="utf-8")
+    assert '"loaded_row_count": 4' in dashboard
+    assert 'href="codex-usage-tracker-assets/dashboard.css?v=' in dashboard
 
 
 def test_dashboard_universal_summary_cards_contract(tmp_path: Path) -> None:

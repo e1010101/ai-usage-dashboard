@@ -42,6 +42,7 @@
     const urlParams = new URLSearchParams(window.location.search);
     const initialState = stateManager ? stateManager.read(urlParams) : {};
     let data = payloadRows(initialPayload);
+    let sourceSummaries = Array.isArray(initialPayload.source_summaries) ? initialPayload.source_summaries : [];
     let pricingConfigured = Boolean(initialPayload.pricing_configured);
     let pricingSource = initialPayload.pricing_source || {};
     let pricingSnapshotWarning = initialPayload.pricing_snapshot_warning || '';
@@ -467,19 +468,33 @@
       return impact || `${credits(value)} credits counted toward Codex usage limits`;
     }
     function providerTabLabel(provider) {
-      if (provider === 'openai') return data.some(row => row.source_provider === 'openai' && row.source_app === 'codex') ? 'Codex' : 'OpenAI';
-      if (provider === 'anthropic') return data.some(row => row.source_provider === 'anthropic' && row.source_app === 'claude-code') ? 'Claude Code' : 'Anthropic';
+      if (provider === 'openai') return sourceCatalogHas('openai', 'codex') ? 'Codex' : 'OpenAI';
+      if (provider === 'anthropic') return sourceCatalogHas('anthropic', 'claude-code') ? 'Claude Code' : 'Anthropic';
       return provider ? provider.split(/[-_]/).map(part => part ? `${part[0].toUpperCase()}${part.slice(1)}` : '').join(' ') : 'Overview';
     }
-    function availableProviders() {
-      return [...new Set(data.map(row => row.source_provider).filter(Boolean))].sort();
+    function sourceCatalogRows() {
+      return sourceSummaries.length ? sourceSummaries : data;
     }
-    function inferredProviderScope(rows = []) {
+    function sourceCatalogValues(field) {
+      return sourceCatalogRows().map(row => row[field]).filter(Boolean);
+    }
+    function sourceCatalogHas(provider, app = '') {
+      return sourceCatalogRows().some(row => row.source_provider === provider && (!app || row.source_app === app));
+    }
+    function availableProviders() {
+      return [...new Set(sourceCatalogValues('source_provider'))].sort();
+    }
+    function explicitProviderScope() {
       if (providerEl.value) return providerEl.value;
       if (appEl.value) {
-        const providerFromApp = [...new Set(data.filter(row => row.source_app === appEl.value).map(row => row.source_provider).filter(Boolean))];
+        const providerFromApp = [...new Set(sourceCatalogRows().filter(row => row.source_app === appEl.value).map(row => row.source_provider).filter(Boolean))];
         if (providerFromApp.length === 1) return providerFromApp[0];
       }
+      return '';
+    }
+    function inferredProviderScope(rows = []) {
+      const explicit = explicitProviderScope();
+      if (explicit) return explicit;
       const providers = [...new Set(rows.map(row => row.source_provider).filter(Boolean))];
       return providers.length === 1 ? providers[0] : '';
     }
@@ -489,9 +504,9 @@
       if (scope === 'anthropic') return { scope, ...providerProfiles.anthropic };
       return { scope: '', ...providerProfiles.overview };
     }
-    function renderProviderTabs(rows = []) {
+    function renderProviderTabs() {
       const tabs = [{ key: '', label: 'Overview' }, ...availableProviders().map(provider => ({ key: provider, label: providerTabLabel(provider) }))];
-      const selected = inferredProviderScope(rows);
+      const selected = explicitProviderScope();
       providerTabsEl.innerHTML = tabs.map(tab => `
         <button type="button" data-provider-tab="${escapeHtml(tab.key)}" aria-pressed="${tab.key === selected ? 'true' : 'false'}">${escapeHtml(tab.label)}</button>
       `).join('');
@@ -502,7 +517,7 @@
           providerEl.value = nextProvider;
           if (!nextProvider) {
             appEl.value = '';
-          } else if (appEl.value && !data.some(row => row.source_provider === nextProvider && row.source_app === appEl.value)) {
+          } else if (appEl.value && !sourceCatalogHas(nextProvider, appEl.value)) {
             appEl.value = '';
           }
           activePreset = '';
@@ -865,13 +880,13 @@
       const resetMs = window.reset_at ? Date.parse(window.reset_at) : NaN;
       if (!duration || !Number.isFinite(resetMs)) return '';
       const startMs = resetMs - duration;
-      const nowMs = Date.now();
+      const endMs = Math.min(resetMs, Date.now());
       const totals = new Map();
       let total = 0;
       for (const row of data) {
         if (row.source_provider !== provider) continue;
         const t = Date.parse(row.event_timestamp || '');
-        if (!Number.isFinite(t) || t < startMs || t > nowMs) continue;
+        if (!Number.isFinite(t) || t < startMs || t > endMs) continue;
         const tokens = Number(row.total_tokens || 0);
         total += tokens;
         const key = row.project_name || 'Unknown project';
@@ -1126,8 +1141,8 @@
     }
     function rebuildFilterOptions() {
       rebuildSelectOptions(modelEl, data.map(row => row.model), 'All models');
-      rebuildSelectOptions(providerEl, data.map(row => row.source_provider), 'All providers');
-      rebuildSelectOptions(appEl, data.map(row => row.source_app), 'All apps');
+      rebuildSelectOptions(providerEl, sourceCatalogValues('source_provider'), 'All providers');
+      rebuildSelectOptions(appEl, sourceCatalogValues('source_app'), 'All apps');
       rebuildSelectOptions(effortEl, data.map(row => row.effort), 'All efforts');
     }
     function applyInitialState() {
@@ -1543,10 +1558,10 @@
       const relationScore = (group.subagentCount || 0) * 4 + (group.autoReviewCount || 0) * 6 + (group.attachedCount || 0) * 3;
       return costScore + usageScore + tokenScore + lowCacheScore + contextScore + pricingScore + relationScore + Number(group.signalCount || 0) * 10;
     }
-    function severityForScore(score, hasPricingGap = false) {
+    function severityForScore(score) {
       if (score >= 95) return 'high';
       if (score >= 48) return 'medium';
-      return hasPricingGap ? 'review' : 'review';
+      return 'review';
     }
     function callSortValue(row, key) {
       if (key === 'attention') return rowAttentionScore(row);
@@ -2015,7 +2030,7 @@
       const previousRows = previousRange ? filtered(previousRange) : null;
       const previousSummary = previousRows ? buildUniversalSummary(previousRows) : null;
       document.getElementById('visibleCalls').textContent = number.format(summary.visibleCalls);
-      renderProviderTabs(rows);
+      renderProviderTabs();
       updateSummaryCards(rows, summary);
       updateCardDeltas(summary, previousSummary);
       renderProviderDetails(rows, summary);
@@ -2663,6 +2678,7 @@
       activeAvailableRows = Number(nextPayload.active_available_rows || data.length);
       allHistoryAvailableRows = Number(nextPayload.all_history_available_rows || totalAvailableRows);
       archivedAvailableRows = Number(nextPayload.archived_available_rows || Math.max(allHistoryAvailableRows - activeAvailableRows, 0));
+      sourceSummaries = Array.isArray(nextPayload.source_summaries) ? nextPayload.source_summaries : [];
       includeArchived = Boolean(nextPayload.include_archived);
       loadedLimit = payloadLimit(nextPayload);
       rebuildDashboardIndexes();
@@ -2844,7 +2860,7 @@
       if (liveRefreshSupported) refreshDashboardData(true);
     }));
     providerEl.addEventListener('input', () => {
-      if (providerEl.value && appEl.value && !data.some(row => row.source_provider === providerEl.value && row.source_app === appEl.value)) {
+      if (providerEl.value && appEl.value && !sourceCatalogHas(providerEl.value, appEl.value)) {
         appEl.value = '';
       }
     });
