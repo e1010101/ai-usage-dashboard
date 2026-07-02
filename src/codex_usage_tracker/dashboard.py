@@ -49,6 +49,7 @@ from codex_usage_tracker.recommendations import (
 from codex_usage_tracker.store import (
     query_dashboard_event_count,
     query_dashboard_events,
+    query_source_summaries,
     query_usage_record,
     refresh_metadata,
 )
@@ -210,6 +211,12 @@ def dashboard_payload(
         "active_available_rows": active_available_rows,
         "all_history_available_rows": all_history_available_rows,
         "archived_available_rows": max(all_history_available_rows - active_available_rows, 0),
+        "source_summaries": query_source_summaries(
+            db_path=db_path,
+            since=since,
+            until=until,
+            include_archived=include_archived,
+        ),
         "include_archived": include_archived,
         "history_scope": "all-history" if include_archived else "active",
         "limit": normalized_limit,
@@ -546,8 +553,6 @@ def _dashboard_guide_href(output_path: Path) -> str | None:
 def _dashboard_assets_href(output_path: Path) -> str:
     assets_source = resources.files("codex_usage_tracker.plugin_data").joinpath("dashboard")
     assets_target = output_path.parent / "codex-usage-tracker-assets"
-    if assets_target.exists():
-        shutil.rmtree(assets_target)
     _copy_resource_tree(assets_source, assets_target)
     return "codex-usage-tracker-assets"
 
@@ -568,7 +573,22 @@ def _copy_resource_tree(source: Any, target: Path) -> None:
         if child.is_dir():
             _copy_resource_tree(child, destination)
         else:
-            destination.write_bytes(child.read_bytes())
+            _copy_resource_file(child, destination)
+
+
+def _copy_resource_file(source: Any, destination: Path) -> None:
+    content = source.read_bytes()
+    if destination.exists():
+        try:
+            if destination.read_bytes() == content:
+                return
+        except OSError:
+            return
+    try:
+        destination.write_bytes(content)
+    except OSError:
+        if not destination.exists():
+            raise
 
 
 def _html(

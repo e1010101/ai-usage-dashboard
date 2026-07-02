@@ -654,6 +654,40 @@ def query_dashboard_event_count(
         return int(row["row_count"] if row is not None else 0)
 
 
+def query_source_summaries(
+    db_path: Path = DEFAULT_DB_PATH,
+    since: str | None = None,
+    until: str | None = None,
+    include_archived: bool = True,
+) -> list[dict[str, Any]]:
+    """Return source/app availability independent of the loaded dashboard row slice."""
+
+    where_clause, params = _usage_where_clause(
+        since=since,
+        until=until,
+        include_archived=include_archived,
+    )
+    with connect(db_path) as conn:
+        init_db(conn)
+        rows = conn.execute(
+            f"""
+            SELECT
+                coalesce(source_provider, 'unknown provider') AS source_provider,
+                coalesce(source_app, 'unknown app') AS source_app,
+                COUNT(*) AS model_calls,
+                COUNT(DISTINCT session_id) AS sessions,
+                SUM(total_tokens) AS total_tokens,
+                MAX(event_timestamp) AS latest_event
+            FROM usage_events
+            {where_clause}
+            GROUP BY source_provider, source_app
+            ORDER BY latest_event DESC, source_provider, source_app
+            """,
+            params,
+        )
+        return [_row_to_dict(row) for row in rows]
+
+
 def query_most_expensive_calls(
     db_path: Path = DEFAULT_DB_PATH,
     limit: int = 20,

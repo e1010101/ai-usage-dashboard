@@ -157,7 +157,7 @@ def _candidate_distance(row: dict[str, Any], candidate: ParentCandidate) -> floa
     first = _timestamp(candidate.first)
     latest = _timestamp(candidate.latest)
     if event_time is None or first is None or latest is None:
-        return 0
+        return float("inf")
     if first <= event_time <= latest:
         return 0
     return min(abs(event_time - first), abs(event_time - latest))
