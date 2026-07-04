@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 APP_DIR = Path.home() / ".codex-usage-tracker"
@@ -18,5 +19,10 @@ DEFAULT_THRESHOLDS_PATH = APP_DIR / "thresholds.json"
 DEFAULT_PROJECTS_PATH = APP_DIR / "projects.json"
 DEFAULT_CODEX_HOME = Path.home() / ".codex"
 DEFAULT_CLAUDE_HOME = Path.home() / ".claude"
+DEFAULT_HERMES_HOME = (
+    Path(os.environ["LOCALAPPDATA"]) / "hermes"
+    if os.environ.get("LOCALAPPDATA")
+    else Path.home() / ".hermes"
+)
 DEFAULT_PLUGIN_LINK = Path.home() / "plugins" / "ai-usage-dashboard"
 DEFAULT_MARKETPLACE_PATH = Path.home() / ".agents" / "plugins" / "marketplace.json"

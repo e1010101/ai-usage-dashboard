@@ -24,6 +24,7 @@ from codex_usage_tracker.paths import (
     DEFAULT_CODEX_HOME,
     DEFAULT_DASHBOARD_PATH,
     DEFAULT_DB_PATH,
+    DEFAULT_HERMES_HOME,
     DEFAULT_PRICING_PATH,
     DEFAULT_PROJECTS_PATH,
 )
@@ -62,6 +63,7 @@ def refresh_usage_index(
     result = refresh_index(
         codex_home=DEFAULT_CODEX_HOME,
         claude_home=DEFAULT_CLAUDE_HOME,
+        hermes_home=DEFAULT_HERMES_HOME,
         db_path=DEFAULT_DB_PATH,
         include_archived=include_archived,
         source=source,
@@ -292,7 +294,7 @@ def generate_usage_dashboard(
     limit: int = 5000,
     since: str | None = None,
     privacy_mode: str = "normal",
-    include_archived: bool = False,
+    include_archived: bool = True,
 ) -> dict[str, Any]:
     """Generate a local hoverable HTML dashboard from aggregate-only usage metrics."""
 
@@ -370,14 +372,17 @@ def init_usage_allowance_config(force: bool = False) -> dict[str, Any]:
 
 @mcp.tool()
 def update_usage_pricing_config(
-    tier: str = "standard", include_estimates: bool = True
+    tier: str = "standard",
+    include_estimates: bool = True,
+    include_deepseek: bool = False,
 ) -> dict[str, Any]:
-    """Fetch OpenAI-published text-token pricing into the local pricing config."""
+    """Fetch source-published text-token pricing into the local pricing config."""
 
     result = update_pricing_from_openai_docs(
         DEFAULT_PRICING_PATH,
         tier=tier,
         include_estimates=include_estimates,
+        include_deepseek=include_deepseek,
     )
     return {
         "schema": "codex-usage-tracker-update-pricing-v1",
@@ -387,6 +392,9 @@ def update_usage_pricing_config(
         "fetched_at": result.fetched_at,
         "model_count": result.model_count,
         "estimated_model_count": result.estimated_model_count,
+        "deepseek_model_count": result.deepseek_model_count,
+        "alias_count": result.alias_count,
+        "source_urls": list(result.source_urls),
         "backup_path": str(result.backup_path) if result.backup_path else None,
     }
 

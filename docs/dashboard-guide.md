@@ -18,7 +18,7 @@ ai-usage-dashboard refresh --source all
 ai-usage-dashboard serve-dashboard --source all --open
 ```
 
-Use `ai-usage-dashboard serve-dashboard --open` for the default dashboard, which indexes Codex and Claude Code logs. Use `--source codex` or `--source claude-code` for a single-provider dashboard.
+Use `ai-usage-dashboard serve-dashboard --open` for the default all-sources dashboard. Use `--source codex`, `--source claude-code`, or `--source hermes` for a single-source dashboard; `--source all` indexes Codex, Claude Code, and Hermes when their local roots exist.
 
 The Codex line of the `Usage Limits` card is populated from local Codex JSONL `rate_limits` snapshots when available. For optional manual allowance context, initialize a local template and copy values from Codex Usage or `/status`:
 
@@ -83,8 +83,8 @@ The dashboard opens in `Insights` view. This view is designed to answer "what ne
 
 - `Needs Attention` cards rank costly threads, Codex allowance usage, low cache reuse, context bloat, unpriced usage, estimated pricing, and reasoning-output spikes from aggregate fields only.
 - `Investigation Presets` apply a view, derived filter, sort order, and explanatory caption together.
-- Presets include highest-cost threads, highest Codex credits, context bloat, cache misses, pricing gaps, and estimated-price review. Codex credit presets apply only to Codex/OpenAI rows; Claude Code rows are marked not applicable for Codex credits.
-- `Overview`, `Codex`, and `Claude Code` provider tabs (rendered as bracketed segments like `[ overview ]`) keep mixed-source rollups separate from provider-specific detail. Use `Overview` for comparison, then switch into a provider tab when you want the cards and explanations to match that source's token semantics.
+- Presets include highest-cost threads, highest Codex credits, context bloat, cache misses, pricing gaps, and estimated-price review. Codex credit presets apply only to Codex/OpenAI rows; Claude Code and Hermes/DeepSeek rows are marked not applicable for Codex credits.
+- `Overview`, `Codex`, `Claude Code`, and other detected provider tabs (rendered as bracketed segments like `[ overview ]`) keep mixed-source rollups separate from provider-specific detail. Use `Overview` for comparison, then switch into a provider tab when you want the cards and explanations to match that source's token semantics.
 - The top table shows threads by attention score so you can jump from a summary signal into a thread timeline or selected call.
 - Clear an active preset to return to normal manual filtering and sorting.
 
@@ -98,11 +98,12 @@ Use `Calls` view when you want to inspect individual model calls.
 - The top cards are universal and provider-neutral: `Visible Calls`, `Total Tokens`, `Input Tokens`, `Cache Tokens`, `Output Tokens`, `Reasoning Tokens`, `Estimated Cost`, and `Usage Limits`. The labels never change with provider scope; provider tabs change which rows are in scope, not what the cards mean.
 - `Usage Limits` shows remaining capacity. In `Overview` it shows one concise line per visible provider (for example `Codex 5h 72% · weekly 41%`); in a provider tab it shows only that provider's windows. Missing snapshots render as `No snapshots` or `<Provider> no snapshot`.
 - A `Provider Details` strip below the top cards holds provider-specific metrics: Codex credits and credit-rate coverage, credit-rate source and fetched timestamp, allowance reset timestamps, the Claude status-line snapshot source and captured timestamp, and pricing caveats.
-- Provider tabs are the primary source switch. `Overview` shows all visible providers together, while `Codex` and `Claude Code` tabs keep provider-specific explanations in scope.
-- The `Provider` and `App` filters are still available for narrower source filtering, such as `openai / codex` and `anthropic / claude-code`.
+- Provider tabs are the primary source switch. `Overview` shows all visible providers together, while provider tabs such as `Codex`, `Claude Code`, or `DeepSeek` keep provider-specific explanations in scope.
+- The `Provider` and `App` filters are still available for narrower source filtering, such as `openai / codex`, `anthropic / claude-code`, and `deepseek / hermes`.
 - The `Confidence` filter separates exact cost, estimated cost, unpriced cost, exact credit-rate matches, inferred credit mappings, user credit overrides, missing credit rates, and rows where Codex credits are not applicable.
+- The `Thread type` filter can show all rows, parent-thread rows only, or spawned/subagent rows only. Use `Parent threads only` when you want to study the main thread without its spawned work.
 - The `Time` filter supports all time, today, this week, last 7 days, this month, and custom calendar ranges. It defaults to `This week`. Presets are relative to your browser's local date. Custom ranges use inclusive start and end dates.
-- The `History` control defaults to `Active sessions only`. Switch to `All history` only when you want live refresh to scan archived session logs and include any archived rows already present in SQLite.
+- The `History` control defaults to `All history`. Switch to `Active sessions only` when you want to hide archived session rows from the current view and live refresh.
 - The URL tracks the active view, filters, time preset or custom range, sort, preset, selected row or thread, page, and expanded threads. `Copy link` copies that state so the same investigation can be reopened.
 - `Export CSV` downloads the currently filtered aggregate calls. In Threads view, it exports the calls behind the filtered thread list rather than only the visible group headers.
 - A `Parser warnings` chip appears only when the latest refresh reports skipped token events, missing expected token fields, invalid counters, duplicate cumulative snapshots, or unknown event shapes. Use `ai-usage-dashboard inspect-log <path>` to inspect a suspect log without writing to SQLite.
@@ -128,7 +129,7 @@ Useful interpretation notes:
 - `Input Tokens` counts fresh input that was not served from cache; `Cache Tokens` combines cache reads with cache writes, and its hover title splits the two buckets. Call Details still shows the raw provider input buckets (`Cache read` and `Direct input` for Claude Code rows).
 - Claude totals include direct input, cache writes, cache reads, and output, so very large totals are often mostly cache-read reuse rather than fresh prompt growth.
 - A cost with `*` means the pricing row is marked as a best-guess estimate.
-- Codex credits are estimated from aggregate input, cached-input, and output token counters for Codex/OpenAI rows only. Direct model matches use the bundled OpenAI Codex rate-card snapshot; inferred labels are marked estimated, local credit-rate overrides are marked user-provided, and Claude Code rows are marked not applicable.
+- Codex credits are estimated from aggregate input, cached-input, and output token counters for Codex/OpenAI rows only. Direct model matches use the bundled OpenAI Codex rate-card snapshot; inferred labels are marked estimated, local credit-rate overrides are marked user-provided, and Claude Code and Hermes/DeepSeek rows are marked not applicable.
 - The Codex line of `Usage Limits` is read from local Codex `rate_limits` snapshots when available, without contacting a remote account API. Configure `~/.codex-usage-tracker/allowance.json` with values copied from Codex Settings > Usage, the Codex Usage dashboard, or `/status` when you want to override a dynamic window, add exact credit totals, or fill in missing local snapshot data.
 - The Claude line of `Usage Limits` is read from `~/.codex-usage-tracker/claude-limits.json`, which can be filled automatically by `install-claude-limits-statusline`. It stores only percentages, reset timestamps, and source metadata.
 
@@ -177,18 +178,19 @@ When served from localhost, the details panel includes `Load context` and `Inclu
 
 ## Practical Workflow
 
-1. Start with `serve-dashboard --source all --open` when tracking both Codex and Claude Code, or `serve-dashboard --open` for the default Codex-only source.
-2. Use `Refresh` after a Codex or Claude Code run finishes, or leave `Live` enabled while you work.
-3. Leave `History` on `Active sessions only` for current work. Switch to `All history` when you intentionally want archived sessions included in the live refresh.
+1. Start with `serve-dashboard --source all --open` when tracking all supported local sources, or `serve-dashboard --source codex --open` for Codex only.
+2. Use `Refresh` after a Codex, Claude Code, or Hermes run finishes, or leave `Live` enabled while you work.
+3. Leave `History` on `All history` when you want time filters to include every indexed session. Switch to `Active sessions only` when you want to hide archived sessions during live refresh.
 4. Optionally run `parse-allowance` with copied values from Codex Usage or `/status`, or initialize and edit `allowance.json` manually, when you want to override or supplement the dynamic Codex snapshot.
-5. Start in `Overview` and `Insights` to compare providers, then switch to `Codex` or `Claude Code` before interpreting provider-specific cards.
-6. Narrow the `Time` filter when you are investigating a recent spike or a specific work window.
-7. Use a preset when the question is already clear: highest-cost threads, highest Codex credits, context bloat, cache misses, pricing gaps, or estimated-price review.
-8. Use `Threads` view to find the active work thread and any spawned subagent calls.
-9. Sort by `Cost`, `Highest Codex credits`, `Tokens`, `Cache`, or `Context` when you need manual comparison.
-10. Use `Copy link` when you want to return to the same filter/sort/selection state later.
-11. Use `Export CSV` when the current filtered aggregate calls need spreadsheet review.
-12. Click into a row and use `Load context` only when aggregate fields are not enough to explain the call.
+5. Start in `Overview` and `Insights` to compare providers, then switch to the relevant provider tab before interpreting provider-specific cards.
+6. Use `Thread type` to focus on parent threads or spawned/subagent work.
+7. Narrow the `Time` filter when you are investigating a recent spike or a specific work window.
+8. Use a preset when the question is already clear: highest-cost threads, highest Codex credits, context bloat, cache misses, pricing gaps, or estimated-price review.
+9. Use `Threads` view to find the active work thread and any spawned subagent calls.
+10. Sort by `Cost`, `Highest Codex credits`, `Tokens`, `Cache`, or `Context` when you need manual comparison.
+11. Use `Copy link` when you want to return to the same filter/sort/selection state later.
+12. Use `Export CSV` when the current filtered aggregate calls need spreadsheet review.
+13. Click into a row and use `Load context` only when aggregate fields are not enough to explain the call.
 
 ## Investigating Long Chat Growth
 
@@ -224,6 +226,6 @@ Remaining 5-hour and weekly Codex allowance is read from local Codex `rate_limit
 
 Claude Code remaining limits are read from a local sanitized status-line snapshot at `~/.codex-usage-tracker/claude-limits.json`. Run `ai-usage-dashboard install-claude-limits-statusline` once to update `~/.claude/settings.json`; the installer preserves an existing status-line command by wrapping it.
 
-Archived sessions are excluded from dashboard payloads by default. The `All history` mode is an explicit opt-in because archived logs can make refreshes slower and can make current dashboards look inflated by older work.
+Dashboard payloads include archived sessions by default so time filters cover all indexed usage. Use `Active sessions only` or `--active-only` when you want current-work views that hide archived rows.
 
-Pricing and Codex credit estimates are source-stamped local calculations. Use `ai-usage-dashboard pin-pricing --output <path>` when a report needs to keep the same USD pricing snapshot over time, and use `ai-usage-dashboard update-rate-card` when you want an explicit local copy of the bundled Codex credit rate-card snapshot. `update-pricing` refreshes OpenAI pricing only; add manual local prices for non-OpenAI models when you want USD estimates for those rows.
+Pricing and Codex credit estimates are source-stamped local calculations. Use `ai-usage-dashboard pin-pricing --output <path>` when a report needs to keep the same USD pricing snapshot over time, and use `ai-usage-dashboard update-rate-card` when you want an explicit local copy of the bundled Codex credit rate-card snapshot. `update-pricing` refreshes OpenAI pricing by default; add `--include-deepseek` for DeepSeek API pricing, and add manual local prices for other models when you want USD estimates for those rows.

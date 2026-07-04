@@ -12,8 +12,9 @@ SessionIndex: TypeAlias = dict[str, SessionInfo]
 
 SOURCE_CODEX = "codex"
 SOURCE_CLAUDE_CODE = "claude-code"
+SOURCE_HERMES = "hermes"
 SOURCE_ALL = "all"
-SOURCE_CHOICES = (SOURCE_CODEX, SOURCE_CLAUDE_CODE, SOURCE_ALL)
+SOURCE_CHOICES = (SOURCE_CODEX, SOURCE_CLAUDE_CODE, SOURCE_HERMES, SOURCE_ALL)
 
 
 class UsageSourceAdapter(Protocol):

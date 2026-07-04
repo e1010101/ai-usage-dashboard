@@ -7,7 +7,7 @@ description: Use when the user asks about Codex or AI coding-agent token usage, 
 
 Unofficial project: AI Usage Dashboard is independent and is not made by, affiliated with, endorsed by, sponsored by, or supported by OpenAI. OpenAI and Codex are trademarks of OpenAI.
 
-Use this plugin to inspect aggregate token usage from supported local coding-agent logs. The CLI and Codex plugin startup command is `ai-usage-dashboard`; the Python package/distribution name remains `codex-usage-tracker` for compatibility. Codex is the default source; Claude Code can be included with `source="claude-code"` or `source="all"`.
+Use this plugin to inspect aggregate token usage from supported local coding-agent logs. The CLI and Codex plugin startup command is `ai-usage-dashboard`; the Python package/distribution name remains `codex-usage-tracker` for compatibility. Source-refresh commands default to `source="all"`; use `source="codex"`, `source="claude-code"`, or `source="hermes"` for one source.
 
 ## Privacy Boundary
 
@@ -18,7 +18,7 @@ The only exception is `usage_call_context`, which intentionally reads one select
 ## Fast Paths
 
 - For "Open dashboard" or similar dashboard-open requests, do not inspect repository files, plugin manifests, tool registries, git status, or local logs first. Run `ai-usage-dashboard open-dashboard --refresh` immediately. If the user explicitly wants all supported sources, include `--source all`.
-- For "Heaviest thread?", "Thread leaderboard", or similar thread-ranking requests, do not inspect repository files, SQLite schemas, plugin manifests, process lists, dashboard servers, or local logs manually. Use the tracker API: refresh the aggregate index, then rank threads with `usage_summary(group_by="thread", limit=10, response_format="json")`. Use `source="all"` on refresh when the user asks across Codex and Claude Code.
+- For "Heaviest thread?", "Thread leaderboard", or similar thread-ranking requests, do not inspect repository files, SQLite schemas, plugin manifests, process lists, dashboard servers, or local logs manually. Use the tracker API: refresh the aggregate index, then rank threads with `usage_summary(group_by="thread", limit=10, response_format="json")`. Use `source="all"` on refresh when the user asks across Codex, Claude Code, and Hermes.
 - If MCP tools are unavailable for thread-ranking requests, run `ai-usage-dashboard refresh --json` and `ai-usage-dashboard summary --group-by thread --limit 10 --json`. Add `--source all` to refresh when the user asks across all supported sources. The summary is already ordered by `total_tokens` descending.
 - Answer thread-ranking requests directly from the summary rows. For the heaviest-thread question, lead with the first row's thread and total tokens; for leaderboard requests, show a compact ranked list.
 - If the CLI command is missing for open-dashboard requests and you are already inside the source checkout, use the local virtualenv with `PYTHONPATH` set to `src`: PowerShell `$env:PYTHONPATH='src'; .\.venv\Scripts\python.exe -m codex_usage_tracker.cli open-dashboard --refresh`, or POSIX `PYTHONPATH=src .venv/bin/python -m codex_usage_tracker.cli open-dashboard --refresh`.
@@ -28,7 +28,7 @@ The only exception is `usage_call_context`, which intentionally reads one select
 
 ## Common Workflows
 
-- Refresh the index before answering usage questions. Use the default Codex source for Codex-only questions; use `source="all"` or `ai-usage-dashboard refresh --source all` for cross-source questions.
+- Refresh the index before answering usage questions. Use `source="codex"` for Codex-only questions; use `source="all"` or `ai-usage-dashboard refresh --source all` for cross-source questions. Use `source="hermes"` or `--source hermes` for Hermes-only DeepSeek usage.
 - Use `usage_doctor` when setup, plugin discovery, MCP launch, dashboard output, or pricing estimates look wrong.
 - Use `usage_summary` for high-level totals by date, source provider, source app, model, effort, cwd, thread, or session.
 - Use `usage_query` for stable JSON rows filtered by date, source provider/app, project, model, effort, thread, pricing status, token minimums, or Codex credit minimums.
@@ -39,9 +39,9 @@ The only exception is `usage_call_context`, which intentionally reads one select
 - Use `usage_call_context` for one selected model call when the user asks to load actual logged context on demand.
 - Use `most_expensive_usage_calls` to identify high-token calls and aggregate efficiency signals.
 - Use `privacy_mode="redacted"` or `privacy_mode="strict"` for MCP tools, or the CLI global option `--privacy-mode strict` before a subcommand, when the user plans to share dashboards, CSV, JSON, screenshots, or support bundles.
-- Use `generate_usage_dashboard` when the user wants a visual hoverable report, including flat calls, threaded-by-thread views, parent-thread latching for spawned subagents, auto-review attachment details, an active-only default, and explicit all-history archived-session opt-in.
+- Use `generate_usage_dashboard` when the user wants a visual hoverable report, including flat calls, threaded-by-thread views, parent-thread latching for spawned subagents, auto-review attachment details, an all-history default, and explicit active-only archived-session opt-out.
 - Use `export_usage_csv` when the user wants local spreadsheet-friendly data.
-- Use `update_usage_pricing_config` when the user wants cost estimates based on OpenAI-published text-token pricing. This refreshes the local pricing cache and does not send local usage data anywhere. Internal Codex labels may include explicitly marked best-guess estimates when no public pricing row exists. For non-OpenAI models, use manual local pricing overrides.
+- Use `update_usage_pricing_config` when the user wants cost estimates based on source-published text-token pricing. This refreshes the local pricing cache and does not send local usage data anywhere. Internal Codex labels may include explicitly marked best-guess estimates when no public pricing row exists. Pass `include_deepseek=True` when DeepSeek API pricing and aliases should be included; for other non-OpenAI models, use manual local pricing overrides.
 - Use `init_usage_pricing_config` only when the user wants a manual local pricing template or override file.
-- Codex credit estimates are aggregate-only and use bundled or locally configured Codex rate-card values. Direct model matches are exact; aliases and inferred labels are marked estimated. Non-Codex rows such as Claude Code are `not_applicable` for Codex credits.
+- Codex credit estimates are aggregate-only and use bundled or locally configured Codex rate-card values. Direct model matches are exact; aliases and inferred labels are marked estimated. Non-Codex rows such as Claude Code and Hermes/DeepSeek are `not_applicable` for Codex credits.
 - The dashboard's universal `Usage Limits` card shows remaining capacity per provider. The Codex line is populated from local Codex JSONL `rate_limits` snapshots when available. Use `init_usage_allowance_config` only when the user wants a local allowance template for manual overrides, exact credit totals, or environments without dynamic Codex snapshots. Manual windows with values override dynamic windows with the same key. The Claude line is populated from `~/.codex-usage-tracker/claude-limits.json`; run `ai-usage-dashboard install-claude-limits-statusline` once to configure Claude Code's status line, wrapping any existing status-line command.

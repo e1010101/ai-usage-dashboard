@@ -50,6 +50,7 @@ from codex_usage_tracker.paths import (
     DEFAULT_CODEX_HOME,
     DEFAULT_DASHBOARD_PATH,
     DEFAULT_DB_PATH,
+    DEFAULT_HERMES_HOME,
     DEFAULT_MARKETPLACE_PATH,
     DEFAULT_PLUGIN_LINK,
     DEFAULT_PRICING_PATH,
@@ -60,6 +61,7 @@ from codex_usage_tracker.paths import (
 )
 from codex_usage_tracker.plugin_installer import install_plugin, uninstall_plugin
 from codex_usage_tracker.pricing import (
+    DEEPSEEK_PRICING_URL,
     OPENAI_PRICING_MD_URL,
     VALID_PRICING_TIERS,
     pin_pricing_snapshot,
@@ -395,6 +397,22 @@ def _add_context_parser(subparsers: argparse._SubParsersAction[argparse.Argument
     context.add_argument("--json", action="store_true", dest="as_json")
 
 
+def _add_dashboard_history_scope_args(parser: argparse.ArgumentParser) -> None:
+    parser.set_defaults(include_archived=True)
+    parser.add_argument(
+        "--include-archived",
+        dest="include_archived",
+        action="store_true",
+        help="Include archived session rows in the dashboard. This is the default.",
+    )
+    parser.add_argument(
+        "--active-only",
+        dest="include_archived",
+        action="store_false",
+        help="Exclude archived session rows from the dashboard and live refresh.",
+    )
+
+
 def _add_dashboard_parsers(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -402,11 +420,7 @@ def _add_dashboard_parsers(
     dashboard.add_argument("--output", type=Path, default=DEFAULT_DASHBOARD_PATH)
     dashboard.add_argument("--limit", type=int, default=5000, help="Maximum calls to load; use 0 for all")
     dashboard.add_argument("--since", help="Only include calls at or after this ISO date/time")
-    dashboard.add_argument(
-        "--include-archived",
-        action="store_true",
-        help="Include archived session rows already present in the SQLite index.",
-    )
+    _add_dashboard_history_scope_args(dashboard)
     dashboard.add_argument("--codex-home", type=Path, default=DEFAULT_CODEX_HOME)
     dashboard.add_argument("--open", action="store_true")
     dashboard.add_argument("--json", action="store_true", dest="as_json")
@@ -417,11 +431,7 @@ def _add_dashboard_parsers(
     open_dashboard.add_argument("--output", type=Path, default=DEFAULT_DASHBOARD_PATH)
     open_dashboard.add_argument("--limit", type=int, default=5000, help="Maximum calls to load; use 0 for all")
     open_dashboard.add_argument("--since", help="Only include calls at or after this ISO date/time")
-    open_dashboard.add_argument(
-        "--include-archived",
-        action="store_true",
-        help="Include archived sessions when refreshing and in the generated dashboard.",
-    )
+    _add_dashboard_history_scope_args(open_dashboard)
     open_dashboard.add_argument(
         "--refresh",
         action="store_true",
@@ -460,7 +470,7 @@ def _add_dashboard_parsers(
     )
     serve.add_argument("--codex-home", type=Path, default=DEFAULT_CODEX_HOME)
     _add_source_refresh_args(serve, include_codex_home=False)
-    serve.add_argument("--include-archived", action="store_true")
+    _add_dashboard_history_scope_args(serve)
     serve.add_argument(
         "--json",
         action="store_true",
@@ -478,6 +488,7 @@ def _add_source_refresh_args(
         parser.add_argument("--codex-home", type=Path, default=DEFAULT_CODEX_HOME)
     parser.add_argument("--source", choices=SOURCE_CHOICES, default=SOURCE_ALL)
     parser.add_argument("--claude-home", type=Path, default=DEFAULT_CLAUDE_HOME)
+    parser.add_argument("--hermes-home", type=Path, default=DEFAULT_HERMES_HOME)
 
 
 def _add_source_filter_args(parser: argparse.ArgumentParser) -> None:
@@ -530,12 +541,18 @@ def _add_pricing_parsers(
     pricing.add_argument("--json", action="store_true", dest="as_json")
 
     update_pricing = subparsers.add_parser(
-        "update-pricing", help="Fetch OpenAI text-token pricing into the local config"
+        "update-pricing", help="Fetch source-published text-token pricing into the local config"
     )
     update_pricing.add_argument("--output", type=Path, default=None)
     update_pricing.add_argument("--source", choices=["openai-docs"], default="openai-docs")
     update_pricing.add_argument("--tier", choices=VALID_PRICING_TIERS, default="standard")
     update_pricing.add_argument("--source-url", default=OPENAI_PRICING_MD_URL)
+    update_pricing.add_argument(
+        "--include-deepseek",
+        action="store_true",
+        help="Also fetch DeepSeek API pricing and compatibility aliases into the same cache.",
+    )
+    update_pricing.add_argument("--deepseek-source-url", default=DEEPSEEK_PRICING_URL)
     update_pricing.add_argument(
         "--no-estimates",
         action="store_true",
@@ -830,6 +847,7 @@ def _run_refresh(args: argparse.Namespace) -> int:
     result = refresh_usage_index(
         codex_home=args.codex_home,
         claude_home=args.claude_home,
+        hermes_home=args.hermes_home,
         db_path=args.db,
         include_archived=args.include_archived,
         source=args.source,
@@ -879,6 +897,7 @@ def _run_rebuild_index(args: argparse.Namespace) -> int:
     result = rebuild_usage_index(
         codex_home=args.codex_home,
         claude_home=args.claude_home,
+        hermes_home=args.hermes_home,
         db_path=args.db,
         include_archived=args.include_archived,
         source=args.source,
@@ -1059,6 +1078,7 @@ def _run_open_dashboard(args: argparse.Namespace) -> int:
             refresh_usage_index(
                 codex_home=args.codex_home,
                 claude_home=args.claude_home,
+                hermes_home=args.hermes_home,
                 db_path=args.db,
                 include_archived=args.include_archived,
                 source=args.source,
@@ -1120,6 +1140,7 @@ def _run_serve_dashboard(args: argparse.Namespace) -> int:
         refresh_usage_index(
             codex_home=args.codex_home,
             claude_home=args.claude_home,
+            hermes_home=args.hermes_home,
             db_path=args.db,
             include_archived=args.include_archived,
             source=args.source,
@@ -1139,6 +1160,7 @@ def _run_serve_dashboard(args: argparse.Namespace) -> int:
         open_browser=args.open,
         codex_home=args.codex_home,
         claude_home=args.claude_home,
+        hermes_home=args.hermes_home,
         source=args.source,
         include_archived=args.include_archived,
         context_api="disabled" if args.no_context_api else args.context_api,
@@ -1221,6 +1243,8 @@ def _run_update_pricing(args: argparse.Namespace) -> int:
         tier=args.tier,
         source_url=args.source_url,
         include_estimates=not args.no_estimates,
+        include_deepseek=args.include_deepseek,
+        deepseek_source_url=args.deepseek_source_url,
     )
     if args.as_json:
         _print_json(
@@ -1232,6 +1256,9 @@ def _run_update_pricing(args: argparse.Namespace) -> int:
                 "fetched_at": result.fetched_at,
                 "model_count": result.model_count,
                 "estimated_model_count": result.estimated_model_count,
+                "deepseek_model_count": result.deepseek_model_count,
+                "alias_count": result.alias_count,
+                "source_urls": list(result.source_urls),
                 "backup_path": path_payload(result.backup_path) if result.backup_path else None,
             }
         )
@@ -1242,9 +1269,16 @@ def _run_update_pricing(args: argparse.Namespace) -> int:
         if result.estimated_model_count
         else ""
     )
+    deepseek_suffix = (
+        f", including {result.deepseek_model_count} DeepSeek model"
+        f"{'' if result.deepseek_model_count == 1 else 's'}"
+        if result.deepseek_model_count
+        else ""
+    )
     print(
         f"Wrote {result.model_count} {result.tier} pricing entries from "
-        f"{result.source_url} to {result.path}{estimate_suffix}"
+        f"{', '.join(result.source_urls or (result.source_url,))} "
+        f"to {result.path}{estimate_suffix}{deepseek_suffix}"
         + (f" (backup: {result.backup_path})" if result.backup_path else "")
     )
     return 0

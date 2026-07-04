@@ -57,10 +57,11 @@ The core app is not macOS-only. The CLI, SQLite index, dashboard generator, and 
 
 The tracker is evolving into AI Usage Tracker. The CLI and Codex plugin startup name is `ai-usage-dashboard`; the Python package/distribution name remains `codex-usage-tracker` for compatibility.
 
-- Codex: default source, read from `~/.codex/sessions`.
+- Codex: built-in source, read from `~/.codex/sessions`.
 - Claude Code: opt-in source, read from `~/.claude/projects`.
+- Hermes: opt-in aggregate source, read from `state.db` under `%LOCALAPPDATA%\hermes` on Windows or `~/.hermes` elsewhere.
 
-Use `ai-usage-dashboard refresh --source all` to index both supported sources, or `ai-usage-dashboard refresh --source claude-code --claude-home ~/.claude` for Claude Code only. Query and summary views can filter or group by `source_provider` and `source_app`.
+Source-refresh commands default to `--source all`. Use `ai-usage-dashboard refresh --source all` to index every supported source, `ai-usage-dashboard refresh --source codex` for Codex only, `ai-usage-dashboard refresh --source claude-code --claude-home ~/.claude` for Claude Code only, or `ai-usage-dashboard refresh --source hermes --hermes-home <path>` for Hermes only. Query and summary views can filter or group by `source_provider` and `source_app`.
 
 ## Dashboard Preview
 
@@ -122,7 +123,9 @@ ai-usage-dashboard refresh --source all
 ai-usage-dashboard serve-dashboard --source all --open
 ```
 
-For a Codex-only dashboard, omit `--source all` from `refresh` and `serve-dashboard`.
+Add `--include-deepseek` to `update-pricing` when you want DeepSeek API model prices and compatibility aliases in the same local pricing cache.
+
+For a Codex-only dashboard, use `--source codex` on `refresh` and `serve-dashboard`.
 
 Then:
 
@@ -147,8 +150,8 @@ The tracker does not call a remote account API or infer your logged-in ChatGPT p
 - Local SQLite index at `~/.codex-usage-tracker/usage.sqlite3`.
 - Static dashboard generation plus localhost live refresh.
 - `Insights`, `Calls`, and `Threads` dashboard views.
-- Source-aware provider/app filters for Codex and Claude Code rows.
-- Active-only dashboards by default, with an explicit `All history` toggle for archived sessions.
+- Source-aware provider/app filters for Codex, Claude Code, and Hermes rows.
+- All-history dashboards by default, with an explicit `Active sessions only` toggle for hiding archived sessions.
 - CLI summaries, queries, CSV export, dashboard generation, doctor checks, and support bundles.
 - MCP tools for Codex sessions that want to query local usage data.
 - Companion Codex skills for operational setup and conversational usage analysis.
@@ -219,9 +222,9 @@ This is optional. The normal shell install above is the fastest trusted path for
 
 - This is a sidecar dashboard and plugin, not a native Codex chat overlay.
 - Token counts come from each supported source's logged counters; the tracker does not re-tokenize prompts.
-- Pricing and Codex credit estimates depend on local rate data and confidence labels. Codex credits apply only to Codex/OpenAI rows; Claude Code rows are marked not applicable for Codex credit calculations.
+- Pricing and Codex credit estimates depend on local rate data and confidence labels. Codex credits apply only to Codex/OpenAI rows; Claude Code and Hermes/DeepSeek rows are marked not applicable for Codex credit calculations.
 - Remaining 5-hour and weekly Codex allowance can be read from local Codex `rate_limits` snapshots when present; manual allowance config remains the fallback and override.
-- Local logs may not include usage from other agentic surfaces that share the same allowance. Claude Code remaining-usage capture is deferred.
+- Local logs may not include usage from other agentic surfaces that share the same allowance. Claude Code remaining-usage capture uses an optional local status-line wrapper; Hermes allowance capture is not implemented.
 - Parent-child thread relationships are only as good as the metadata each source logs; inferred auto-review attachments are labeled as inferred.
 
 ## Roadmap
@@ -230,7 +233,7 @@ This is optional. The normal shell install above is the fastest trusted path for
 - Clarify top-card token accounting by showing output tokens and reasoning output as a subset instead of implying all token cards add together.
 - Add more insight presets for cache drift, context growth, subagent-heavy workflows, and pricing/credit confidence gaps.
 - Keep the allowance provider boundary ready for an official usage or allowance API if one becomes available.
-- Add more source adapters, including Gemini CLI and opencode/deepseek, behind the same aggregate-only source contract.
+- Add more source adapters, including Gemini CLI and opencode, behind the same aggregate-only source contract.
 - Continue reducing setup friction for pipx installs, local plugin discovery, and Codex companion skill usage.
 
 ## Development

@@ -15,7 +15,7 @@ ai-usage-dashboard install-plugin --python .venv/bin/python
 ## Repo Layout
 
 - `src/codex_usage_tracker/`: parser facade, SQLite store, reports, dashboard, CLI, and MCP server.
-- `src/codex_usage_tracker/adapters/`: source-specific JSONL adapters for Codex and Claude Code.
+- `src/codex_usage_tracker/adapters/`: source-specific adapters for Codex, Claude Code, and Hermes.
 - `src/codex_usage_tracker/plugin_data/`: plugin assets, dashboard assets, bundled docs, rate cards, and packaged skill files.
 - `skills/`: source skill files copied into package data.
 - `docs/`: user documentation, architecture notes, JSON schemas, and synthetic screenshots.
@@ -54,6 +54,7 @@ ai-usage-dashboard doctor
 ai-usage-dashboard doctor --suggest-repair
 ai-usage-dashboard refresh --source all --json
 ai-usage-dashboard refresh --source claude-code --claude-home /tmp/empty-claude-home --json
+ai-usage-dashboard refresh --source hermes --hermes-home /tmp/empty-hermes-home --json
 ai-usage-dashboard dashboard --output /tmp/codex-usage-dashboard.html
 ai-usage-dashboard serve-dashboard --help
 ai-usage-dashboard init-allowance --output /tmp/codex-usage-allowance.json

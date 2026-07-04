@@ -73,6 +73,7 @@
     const appEl = document.getElementById('sourceApp');
     const effortEl = document.getElementById('effort');
     const pricingStatusEl = document.getElementById('pricingStatus');
+    const threadScopeEl = document.getElementById('threadScope');
     const datePresetEl = document.getElementById('datePreset');
     const dateStartEl = document.getElementById('dateStart');
     const dateEndEl = document.getElementById('dateEnd');
@@ -135,6 +136,7 @@
     const initialPayloadIncludeArchived = Boolean(initialPayload.include_archived);
     let includeArchived = initialPayloadIncludeArchived;
     if (liveRefreshSupported && initialState.historyScope === 'all') includeArchived = true;
+    if (liveRefreshSupported && initialState.historyScope === 'active') includeArchived = false;
     const liveRefreshIntervalMs = 10000;
     const pageSize = 500;
     const datePresetLabels = {
@@ -299,7 +301,7 @@
       historyScopeEl.value = includeArchived ? 'all' : 'active';
       const detail = historyRowsDescription();
       historyScopeEl.title = detail;
-      historyScopeEl.parentElement.title = `${detail}. Archived sessions are scanned only when All history is selected during live refresh.`;
+      historyScopeEl.parentElement.title = `${detail}. All history is the default; Active sessions only hides archived rows.`;
     }
     function rebuildDashboardIndexes() {
       rowByRecordId = new Map(data.map(row => [row.record_id, row]));
@@ -1153,6 +1155,7 @@
       if (optionValueExists(appEl, initialState.sourceApp)) appEl.value = initialState.sourceApp;
       if (optionValueExists(effortEl, initialState.effort)) effortEl.value = initialState.effort;
       if (optionValueExists(pricingStatusEl, initialState.confidence)) pricingStatusEl.value = initialState.confidence;
+      if (optionValueExists(threadScopeEl, initialState.threadScope)) threadScopeEl.value = initialState.threadScope;
       const initialDatePreset = allowedDatePresets.has(initialState.datePreset) ? initialState.datePreset : '';
       const initialDateStart = cleanDateInput(initialState.dateStart);
       const initialDateEnd = cleanDateInput(initialState.dateEnd);
@@ -1182,18 +1185,26 @@
     }
     function updatePricingSourceLine() {
       const sourceEl = document.getElementById('pricingSource');
-      if (pricingConfigured && pricingSource.url) {
+      const pricingSources = Array.isArray(pricingSource.sources) ? pricingSource.sources : [];
+      const sourceLabels = pricingSources.map(source => {
+        const name = source && source.name ? source.name : '';
+        const url = source && source.url ? source.url : '';
+        return name && url ? `${name}: ${url}` : name || url;
+      }).filter(Boolean);
+      if (pricingConfigured && (pricingSource.url || sourceLabels.length)) {
         const sourceParts = [
           pricingSource.name || 'Pricing source',
           pricingSource.tier ? `${pricingSource.tier} tier` : '',
           pricingSource.fetched_at ? `fetched ${formatTimestamp(pricingSource.fetched_at)}` : '',
           pricingSource.pinned ? 'pinned snapshot' : '',
         ].filter(Boolean);
+        const fetchedFrom = sourceLabels.length
+          ? `Fetched from sources: ${sourceLabels.join('; ')}`
+          : `Fetched from ${pricingSource.url}`;
+        const fetchedAt = pricingSource.fetched_at ? ` at ${formatTimestampTitle(pricingSource.fetched_at)}` : '';
         sourceEl.textContent = 'Costs';
         sourceEl.dataset.state = 'ready';
-        sourceEl.title = pricingSource.fetched_at
-          ? `${sourceParts.join(' · ')}. Fetched from ${pricingSource.url} at ${formatTimestampTitle(pricingSource.fetched_at)}. Internal Codex labels may use marked best-guess estimates.${pricingSnapshotWarning ? ` ${pricingSnapshotWarning}` : ''}`
-          : `${sourceParts.join(' · ')}. Internal Codex labels may use marked best-guess estimates.${pricingSnapshotWarning ? ` ${pricingSnapshotWarning}` : ''}`;
+        sourceEl.title = `${sourceParts.join(' · ')}. ${fetchedFrom}${fetchedAt}. Internal Codex labels may use marked best-guess estimates.${pricingSnapshotWarning ? ` ${pricingSnapshotWarning}` : ''}`;
       } else {
         sourceEl.textContent = pricingConfigured ? 'Costs' : 'No costs';
         sourceEl.dataset.state = pricingConfigured ? 'ready' : 'missing';
@@ -1366,6 +1377,14 @@
     function dateCaptionPrefix(range = currentDateRange()) {
       return range.active || range.invalid ? `${range.label}. ` : '';
     }
+    function isSpawnedWork(row) {
+      return isSubagent(row) || Boolean(resolvedParentThreadName(row));
+    }
+    function threadScopeMatches(row, threadScope) {
+      if (!threadScope) return true;
+      const spawned = isSpawnedWork(row);
+      return threadScope === 'parents' ? !spawned : threadScope === 'spawned' ? spawned : true;
+    }
     function filtered(dateRange = currentDateRange()) {
       const term = searchEl.value.trim().toLowerCase();
       const model = modelEl.value;
@@ -1373,6 +1392,7 @@
       const sourceApp = appEl.value;
       const effort = effortEl.value;
       const pricingStatus = pricingStatusEl.value;
+      const threadScope = threadScopeEl.value;
       const rows = data.filter(row => {
         const haystack = [
           rowThreadLabel(row),
@@ -1412,6 +1432,7 @@
           && (!sourceApp || row.source_app === sourceApp)
           && (!effort || row.effort === effort)
           && statusMatches
+          && threadScopeMatches(row, threadScope)
           && rowMatchesDateRange(row, dateRange)
           && presetMatchesRow(row);
       });
@@ -1427,6 +1448,7 @@
         sourceApp: appEl.value,
         effort: effortEl.value,
         confidence: pricingStatusEl.value,
+        threadScope: threadScopeEl.value,
         datePreset: datePresetEl.value,
         dateStart: datePresetEl.value === 'custom' ? dateStartEl.value : '',
         dateEnd: datePresetEl.value === 'custom' ? dateEndEl.value : '',
@@ -2864,7 +2886,7 @@
         appEl.value = '';
       }
     });
-    [searchEl, modelEl, providerEl, appEl, effortEl, pricingStatusEl].forEach(el => el.addEventListener('input', () => {
+    [searchEl, modelEl, providerEl, appEl, effortEl, pricingStatusEl, threadScopeEl].forEach(el => el.addEventListener('input', () => {
       currentPage = 1;
       render();
     }));

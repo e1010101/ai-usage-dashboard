@@ -230,6 +230,9 @@ JSON_PAYLOAD_CONTRACTS: dict[str, dict[str, Any]] = {
             "fetched_at": str,
             "model_count": int,
             "estimated_model_count": int,
+            "deepseek_model_count": int,
+            "alias_count": int,
+            "source_urls": list,
             "backup_path": (str, NoneType),
         }
     },

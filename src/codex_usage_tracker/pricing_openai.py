@@ -16,6 +16,12 @@ from urllib.request import Request, urlopen
 from codex_usage_tracker import __version__
 from codex_usage_tracker.paths import DEFAULT_PRICING_PATH
 from codex_usage_tracker.pricing_config import PRICING_SCHEMA, load_existing_aliases
+from codex_usage_tracker.pricing_deepseek import (
+    DEEPSEEK_COMPATIBILITY_ALIASES,
+    DEEPSEEK_PRICING_SOURCE_NAME,
+    DEEPSEEK_PRICING_URL,
+    parse_deepseek_pricing_html,
+)
 from codex_usage_tracker.pricing_estimates import ESTIMATED_MODEL_PRICES, estimated_model_prices
 
 OPENAI_PRICING_MD_URL = "https://developers.openai.com/api/docs/pricing.md"
@@ -36,6 +42,9 @@ class PricingUpdateResult:
     fetched_at: str
     model_count: int
     estimated_model_count: int = 0
+    deepseek_model_count: int = 0
+    alias_count: int = 0
+    source_urls: tuple[str, ...] = ()
     backup_path: Path | None = None
 
 
@@ -46,8 +55,11 @@ def update_pricing_from_openai_docs(
     source_url: str = OPENAI_PRICING_MD_URL,
     fetch_text: Callable[[str], str] | None = None,
     include_estimates: bool = True,
+    include_deepseek: bool = False,
+    deepseek_source_url: str = DEEPSEEK_PRICING_URL,
+    fetch_deepseek_text: Callable[[str], str] | None = None,
 ) -> PricingUpdateResult:
-    """Fetch OpenAI-published pricing rows and cache them in the local config."""
+    """Fetch source-published pricing rows and cache them in the local config."""
 
     if tier not in VALID_PRICING_TIERS:
         raise ValueError(
@@ -64,24 +76,56 @@ def update_pricing_from_openai_docs(
     models: dict[str, dict[str, Any]] = {
         model: dict(rates) for model, rates in parsed_models.items()
     }
+    source_urls = [source_url]
+    source_entries: list[dict[str, Any]] = [
+        {
+            "name": "OpenAI Developers pricing docs",
+            "url": source_url,
+            "tier": tier,
+            "model_count": len(parsed_models),
+        }
+    ]
     aliases = load_existing_aliases(path)
+    deepseek_model_count = 0
+    if include_deepseek:
+        deepseek_fetcher = fetch_deepseek_text or fetcher
+        deepseek_models = parse_deepseek_pricing_html(deepseek_fetcher(deepseek_source_url))
+        models.update({model: dict(rates) for model, rates in deepseek_models.items()})
+        aliases = {**DEEPSEEK_COMPATIBILITY_ALIASES, **aliases}
+        deepseek_model_count = len(deepseek_models)
+        source_urls.append(deepseek_source_url)
+        source_entries.append(
+            {
+                "name": DEEPSEEK_PRICING_SOURCE_NAME,
+                "url": deepseek_source_url,
+                "model_count": deepseek_model_count,
+                "alias_count": len(DEEPSEEK_COMPATIBILITY_ALIASES),
+            }
+        )
     estimated_model_count = 0
     if include_estimates:
         models.update(estimated_model_prices())
         estimated_model_count = len(ESTIMATED_MODEL_PRICES)
 
     fetched_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    source: dict[str, Any] = {
+        "name": (
+            "OpenAI and DeepSeek pricing docs"
+            if include_deepseek
+            else "OpenAI Developers pricing docs"
+        ),
+        "url": source_url,
+        "tier": tier,
+        "fetched_at": fetched_at,
+        "model_count": len(models),
+        "official_model_count": len(models) - estimated_model_count,
+        "estimated_model_count": estimated_model_count,
+    }
+    if include_deepseek:
+        source["sources"] = source_entries
     payload = {
         "_schema": PRICING_SCHEMA,
-        "_source": {
-            "name": "OpenAI Developers pricing docs",
-            "url": source_url,
-            "tier": tier,
-            "fetched_at": fetched_at,
-            "model_count": len(models),
-            "official_model_count": len(models) - estimated_model_count,
-            "estimated_model_count": estimated_model_count,
-        },
+        "_source": source,
         "models": models,
     }
     if aliases:
@@ -98,6 +142,9 @@ def update_pricing_from_openai_docs(
         fetched_at=fetched_at,
         model_count=len(models),
         estimated_model_count=estimated_model_count,
+        deepseek_model_count=deepseek_model_count,
+        alias_count=len(aliases),
+        source_urls=tuple(source_urls),
         backup_path=backup_path,
     )
 

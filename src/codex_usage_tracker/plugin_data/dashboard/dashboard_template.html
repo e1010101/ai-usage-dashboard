@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" href="data:,">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='12'%20fill='%23071118'/%3E%3Cpath%20d='M14%2046V26h7v20h-7Zm14%200V16h7v30h-7Zm14%200V32h7v14h-7Z'%20fill='%2300d4ff'/%3E%3Cpath%20d='M11%2051h42'%20stroke='%23ff4fd8'%20stroke-width='5'%20stroke-linecap='round'/%3E%3Ctext%20x='32'%20y='24'%20text-anchor='middle'%20font-family='Arial,sans-serif'%20font-size='14'%20font-weight='700'%20fill='white'%3EAI%3C/text%3E%3C/svg%3E">
   <title>__TITLE__</title>
   <link rel="stylesheet" href="__STYLESHEET_HREF__">
 </head>
@@ -19,10 +19,10 @@
       <div class="live-bar" aria-label="Dashboard refresh controls">
         <button id="refreshDashboard" class="refresh-button" type="button">Refresh</button>
         <label class="live-toggle"><input id="autoRefresh" type="checkbox" checked> Live</label>
-        <label class="history-control" title="Active sessions only is the default. All history scans archived session logs during live refresh.">History
+        <label class="history-control" title="All history is the default. Active sessions only hides archived session rows.">History
           <select id="historyScope">
-            <option value="active" selected>Active sessions only</option>
-            <option value="all">All history</option>
+            <option value="active">Active sessions only</option>
+            <option value="all" selected>All history</option>
           </select>
         </label>
       </div>
@@ -49,6 +49,7 @@
       <label class="filter-field">App<select id="sourceApp"><option value="">All apps</option></select></label>
       <label class="filter-field">Reasoning<select id="effort"><option value="">All efforts</option></select></label>
       <label class="filter-field">Confidence<select id="pricingStatus"><option value="">All confidence</option><option value="official">Exact cost</option><option value="estimated">Estimated cost</option><option value="unpriced">Unpriced cost</option><option value="credit-exact">Exact credit rate</option><option value="credit-estimated">Estimated credit mapping</option><option value="credit-override">User credit override</option><option value="credit-missing">Missing credit rate</option><option value="credit-not-applicable">Credit not applicable</option></select></label>
+      <label class="filter-field">Thread type<select id="threadScope"><option value="">All threads</option><option value="parents">Parent threads only</option><option value="spawned">Spawned threads only</option></select></label>
       <label class="filter-field">Time<select id="datePreset"><option value="all">All time</option><option value="today">Today</option><option value="this-week" selected>This week</option><option value="last-7-days">Last 7 days</option><option value="this-month">This month</option><option value="custom">Custom range</option></select></label>
       <label class="filter-field date-field date-field-custom" hidden>Start<input id="dateStart" type="date"></label>
       <label class="filter-field date-field date-field-custom" hidden>End<input id="dateEnd" type="date"></label>
