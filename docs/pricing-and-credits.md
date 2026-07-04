@@ -16,11 +16,19 @@ ai-usage-dashboard update-pricing
 
 This fetches OpenAI text-token pricing from `https://developers.openai.com/api/docs/pricing.md`, parses the selected tier, and writes a source-stamped local cache to `~/.codex-usage-tracker/pricing.json`. The default tier is `standard`; other supported tiers are `batch`, `flex`, and `priority`.
 
+Add DeepSeek API pricing to the same cache:
+
+```bash
+ai-usage-dashboard update-pricing --include-deepseek
+```
+
+With `--include-deepseek`, the updater fetches DeepSeek's published pricing page, caches `deepseek-v4-flash` and `deepseek-v4-pro`, and adds official compatibility aliases for `deepseek-chat` and `deepseek-reasoner`. Codex credits still apply only to Codex/OpenAI rows; DeepSeek rows are marked not applicable for credit confidence.
+
 If a pricing file already exists, the updater leaves a timestamped `.bak` copy next to it before replacing the active cache.
 
 The updater also includes marked best-guess estimates for Codex labels that are not finalized in the public pricing table. `codex-auto-review` uses OpenAI's published `codex-mini-latest` Codex pricing from `https://openai.com/index/introducing-codex/`: `$1.50` per 1M input tokens, a 75% prompt-cache discount (`$0.375` per 1M cached input tokens), and `$6.00` per 1M output tokens. `gpt-5.3-codex-spark` is listed by OpenAI as a research preview with non-final Codex rates, so the tracker estimates it as `gpt-5.3-codex` at `$1.75` per 1M input tokens, `$0.175` per 1M cached input tokens, and `$14.00` per 1M output tokens.
 
-Use `--no-estimates` when you want only pricing rows parsed from the OpenAI pricing table.
+Use `--no-estimates` when you want only pricing rows parsed from the source pricing tables.
 
 For reproducible historical reports, pin the current pricing cache and pass the pinned file later:
 
@@ -35,7 +43,7 @@ For a manual template:
 ai-usage-dashboard init-pricing
 ```
 
-Edit `~/.codex-usage-tracker/pricing.json` with USD-per-million-token rates for local overrides or models that are not present in the OpenAI pricing table. Normal reports never contact the network; only `update-pricing` refreshes the local pricing cache.
+Edit `~/.codex-usage-tracker/pricing.json` with USD-per-million-token rates for local overrides or models that are not present in the fetched pricing tables. Normal reports never contact the network; only `update-pricing` refreshes the local pricing cache.
 
 ## Codex Credits
 
@@ -101,5 +109,6 @@ If Claude Code does not include `rate_limits` yet, the wrapper exits successfull
 - The Claude line of `Usage Limits` appears only when a local Claude Code status-line snapshot has been captured. Use `install-claude-limits-statusline` once to configure automatic capture from Claude Code.
 - The dashboard does not infer live remaining allowance from the logged-in account plan or contact a remote usage API.
 - Pricing can change after a report is generated. Use `pin-pricing` when you need reproducible historical cost estimates.
+- `update-pricing --include-deepseek` adds DeepSeek model costs only; source ingestion still comes from local adapters such as Hermes.
 - Rows with direct model/rate-card matches are more trustworthy than inferred aliases or local overrides.
 - Cost and credit calculations use aggregate counters; the tracker does not re-tokenize prompts or reconstruct usage from raw text.

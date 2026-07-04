@@ -27,6 +27,8 @@ Those fields are not written to SQLite, CSV exports, generated dashboard HTML, o
 
 Claude Code support follows the same aggregate-only rule. The indexer reads local JSONL files under `~/.claude/projects`, extracts usage counters and metadata-like identifiers, and does not persist prompts, assistant text, or tool output.
 
+Hermes support reads aggregate session rows from the local Hermes `state.db` file. The adapter selects only an allowlist of session metadata and token columns, and does not query the `messages` table, request dump files, `system_prompt`, prompts, assistant messages, or tool output. Hermes rows are aggregate-only and do not support lazy raw-context loading.
+
 Codex usage-limit support reads only local Codex JSONL `payload.rate_limits` metadata on token-count events. It uses the latest account-level snapshot to populate 5-hour and weekly remaining windows in dashboard payloads. It does not read prompts, assistant text, tool output, or raw message content, and it does not write these dynamic windows to SQLite by default.
 
 Claude usage-limit support reads a sanitized local snapshot written by the Claude Code status-line wrapper installed by `ai-usage-dashboard install-claude-limits-statusline`. The snapshot stores only provider identity, remaining percentages, reset timestamps, and source metadata. It does not persist the full status-line JSON, transcript path, prompts, assistant messages, or tool output.
@@ -81,9 +83,9 @@ Dashboard payloads and support bundles include the active mode so screenshots an
 
 ## Costs, Credits, And Allowance
 
-Cost estimates are calculated only from aggregate token fields and your local pricing config. They are omitted when no matching model price is configured. Pricing refreshes pull only OpenAI's public pricing markdown and do not send local usage data anywhere. Non-OpenAI model prices can be added through local manual pricing overrides.
+Cost estimates are calculated only from aggregate token fields and your local pricing config. They are omitted when no matching model price is configured. Pricing refreshes pull public pricing pages only, such as OpenAI's pricing markdown and optionally DeepSeek's pricing page, and do not send local usage data anywhere. Other non-OpenAI model prices can be added through local manual pricing overrides.
 
-Codex credit estimates are calculated only from aggregate token fields and bundled or locally configured rate-card values. They apply only to Codex/OpenAI rows; Claude Code and other non-Codex rows are marked `not_applicable` for credit confidence.
+Codex credit estimates are calculated only from aggregate token fields and bundled or locally configured rate-card values. They apply only to Codex/OpenAI rows; Claude Code, Hermes/DeepSeek, and other non-Codex rows are marked `not_applicable` for credit confidence.
 
 Dynamic Usage Remaining reads local Codex rate-limit metadata when present. The optional allowance config is local and stores only the remaining percentages, reset times, or credit totals you manually enter. Manual allowance values can override dynamic Codex windows. Claude Code remaining limits are read only from the sanitized local status-line snapshot after you run `ai-usage-dashboard install-claude-limits-statusline`.
 

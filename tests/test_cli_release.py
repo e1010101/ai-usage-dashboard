@@ -106,7 +106,9 @@ def test_docs_mention_claude_source_support() -> None:
 
     assert "AI Usage Tracker" in docs
     assert "--source claude-code" in docs
+    assert "--source hermes" in docs
     assert "~/.claude/projects" in docs
+    assert "Hermes" in docs
     assert "Claude Code" in docs
 
 

@@ -16,6 +16,7 @@ from codex_usage_tracker.adapters.base import (
     SOURCE_CHOICES,
     SOURCE_CLAUDE_CODE,
     SOURCE_CODEX,
+    SOURCE_HERMES,
     UsageSourceAdapter,
 )
 from codex_usage_tracker.adapters.claude_code_jsonl import (
@@ -23,12 +24,21 @@ from codex_usage_tracker.adapters.claude_code_jsonl import (
     compact_claude_diagnostics,
 )
 from codex_usage_tracker.adapters.codex_jsonl import CodexJsonlAdapter
+from codex_usage_tracker.adapters.hermes_state_db import (
+    HermesStateDbAdapter,
+    compact_hermes_diagnostics,
+)
 from codex_usage_tracker.models import RefreshResult, UsageEvent
 from codex_usage_tracker.parser import (
     PARSER_DIAGNOSTIC_KEYS,
     compact_parser_diagnostics,
 )
-from codex_usage_tracker.paths import DEFAULT_CLAUDE_HOME, DEFAULT_CODEX_HOME, DEFAULT_DB_PATH
+from codex_usage_tracker.paths import (
+    DEFAULT_CLAUDE_HOME,
+    DEFAULT_CODEX_HOME,
+    DEFAULT_DB_PATH,
+    DEFAULT_HERMES_HOME,
+)
 from codex_usage_tracker.projects import apply_project_privacy_to_rows, validate_privacy_mode
 from codex_usage_tracker.schema import (
     USAGE_EVENT_COLUMN_NAMES,
@@ -59,18 +69,28 @@ def _adapters_for_source(source: str) -> list[tuple[str, UsageSourceAdapter]]:
     adapters: dict[str, UsageSourceAdapter] = {
         SOURCE_CODEX: CodexJsonlAdapter(),
         SOURCE_CLAUDE_CODE: ClaudeCodeJsonlAdapter(),
+        SOURCE_HERMES: HermesStateDbAdapter(),
     }
     if source == SOURCE_ALL:
         return [
             (SOURCE_CODEX, adapters[SOURCE_CODEX]),
             (SOURCE_CLAUDE_CODE, adapters[SOURCE_CLAUDE_CODE]),
+            (SOURCE_HERMES, adapters[SOURCE_HERMES]),
         ]
     return [(source, adapters[source])]
 
 
-def _root_for_source(source_name: str, *, codex_home: Path, claude_home: Path) -> Path:
+def _root_for_source(
+    source_name: str,
+    *,
+    codex_home: Path,
+    claude_home: Path,
+    hermes_home: Path,
+) -> Path:
     if source_name == SOURCE_CLAUDE_CODE:
         return claude_home
+    if source_name == SOURCE_HERMES:
+        return hermes_home
     return codex_home
 
 
@@ -80,6 +100,7 @@ def refresh_usage_index(
     include_archived: bool = False,
     *,
     claude_home: Path = DEFAULT_CLAUDE_HOME,
+    hermes_home: Path = DEFAULT_HERMES_HOME,
     source: str = SOURCE_CODEX,
 ) -> RefreshResult:
     """Scan local usage logs and upsert aggregate usage events."""
@@ -90,18 +111,24 @@ def refresh_usage_index(
     scanned_files = 0
     skipped_events = 0
     for source_name, adapter in _adapters_for_source(source):
-        root = _root_for_source(source_name, codex_home=codex_home, claude_home=claude_home)
+        root = _root_for_source(
+            source_name,
+            codex_home=codex_home,
+            claude_home=claude_home,
+            hermes_home=hermes_home,
+        )
         logs = adapter.discover_logs(root, include_archived=include_archived)
         session_index = adapter.load_session_index(root)
         stats: dict[str, int] = {}
         events: list[UsageEvent] = []
         for log_path in logs:
             events.extend(adapter.parse_file(log_path, session_index=session_index, stats=stats))
-        diagnostics = (
-            compact_claude_diagnostics(stats)
-            if source_name == SOURCE_CLAUDE_CODE
-            else compact_parser_diagnostics(stats)
-        )
+        if source_name == SOURCE_CLAUDE_CODE:
+            diagnostics = compact_claude_diagnostics(stats)
+        elif source_name == SOURCE_HERMES:
+            diagnostics = compact_hermes_diagnostics(stats)
+        else:
+            diagnostics = compact_parser_diagnostics(stats)
         source_results[source_name] = {
             "source_provider": adapter.source_provider,
             "source_app": adapter.source_app,
@@ -145,6 +172,7 @@ def rebuild_usage_index(
     include_archived: bool = False,
     *,
     claude_home: Path = DEFAULT_CLAUDE_HOME,
+    hermes_home: Path = DEFAULT_HERMES_HOME,
     source: str = SOURCE_CODEX,
 ) -> RefreshResult:
     """Clear aggregate rows and rescan local usage logs."""
@@ -158,6 +186,7 @@ def rebuild_usage_index(
         db_path=db_path,
         include_archived=include_archived,
         claude_home=claude_home,
+        hermes_home=hermes_home,
         source=source,
     )
 

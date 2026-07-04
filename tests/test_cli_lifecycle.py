@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from test_hermes_adapter import _make_hermes_home
+
 from codex_usage_tracker.json_contracts import validate_json_payload_contract
 
 SESSION_ID = "019e374d-c19f-7da3-a44f-8de043a7a64e"
@@ -153,6 +155,58 @@ def test_rate_card_allowance_and_pricing_snapshot_cli(tmp_path: Path) -> None:
     pinned = json.loads(pinned_pricing_path.read_text(encoding="utf-8"))
     assert pinned["_source"]["pinned"] is True
     assert pinned["_source"]["pin_note"].startswith("Use this file")
+
+
+def test_update_pricing_cli_can_include_deepseek_fixture(tmp_path: Path) -> None:
+    pricing_path = tmp_path / "pricing.json"
+    openai_pricing_path = tmp_path / "openai-pricing.md"
+    deepseek_pricing_path = tmp_path / "deepseek-pricing.html"
+    openai_pricing_path.write_text(
+        """
+<TextTokenPricingTables
+  tier="standard"
+  rows={[
+    ["gpt-5.5", 5, 0.5, 30],
+  ]}
+/>
+""",
+        encoding="utf-8",
+    )
+    deepseek_pricing_path.write_text(
+        """
+<table>
+  <tr><td colspan="2">MODEL</td><td>deepseek-v4-flash<sup>(1)</sup></td><td>deepseek-v4-pro</td></tr>
+  <tr><td rowspan="3">PRICING</td><td>1M INPUT TOKENS (CACHE HIT)</td><td>$0.0028</td><td>$0.003625</td></tr>
+  <tr><td>1M INPUT TOKENS (CACHE MISS)</td><td>$0.14</td><td>$0.435</td></tr>
+  <tr><td>1M OUTPUT TOKENS</td><td>$0.28</td><td>$0.87</td></tr>
+</table>
+""",
+        encoding="utf-8",
+    )
+
+    update = _run_cli(
+        tmp_path,
+        "--pricing",
+        str(pricing_path),
+        "update-pricing",
+        "--source-url",
+        openai_pricing_path.as_uri(),
+        "--include-deepseek",
+        "--deepseek-source-url",
+        deepseek_pricing_path.as_uri(),
+        "--no-estimates",
+        "--json",
+    )
+
+    assert update.returncode == 0
+    payload = json.loads(update.stdout)
+    raw = json.loads(pricing_path.read_text(encoding="utf-8"))
+    _assert_contract(payload)
+    assert payload["model_count"] == 3
+    assert payload["deepseek_model_count"] == 2
+    assert payload["alias_count"] == 2
+    assert raw["aliases"]["deepseek-chat"] == "deepseek-v4-flash"
+    assert raw["models"]["deepseek-v4-pro"]["output_per_million"] == 0.87
 
 
 def test_capture_claude_limits_cli_writes_sanitized_snapshot(tmp_path: Path) -> None:
@@ -343,6 +397,8 @@ def test_report_json_and_query_cli(tmp_path: Path) -> None:
         str(codex_home),
         "--claude-home",
         str(tmp_path / ".claude"),
+        "--hermes-home",
+        str(tmp_path / ".hermes"),
         "--json",
     )
     summary = _run_cli(
@@ -472,6 +528,8 @@ def test_refresh_cli_accepts_claude_source(tmp_path: Path) -> None:
         "claude-code",
         "--claude-home",
         str(claude_home),
+        "--hermes-home",
+        str(tmp_path / ".hermes"),
         "--json",
     )
     payload = json.loads(result.stdout)
@@ -479,6 +537,28 @@ def test_refresh_cli_accepts_claude_source(tmp_path: Path) -> None:
     assert payload["schema"] == "codex-usage-tracker-refresh-v1"
     assert payload["parsed_events"] == 2
     assert payload["source_results"]["claude-code"]["source_provider"] == "anthropic"
+
+
+def test_refresh_cli_accepts_hermes_source(tmp_path: Path) -> None:
+    hermes_home = _make_hermes_home(tmp_path)
+    db_path = tmp_path / "usage.sqlite3"
+
+    result = _run_cli(
+        tmp_path,
+        "--db",
+        str(db_path),
+        "refresh",
+        "--source",
+        "hermes",
+        "--hermes-home",
+        str(hermes_home),
+        "--json",
+    )
+    payload = json.loads(result.stdout)
+
+    assert payload["schema"] == "codex-usage-tracker-refresh-v1"
+    assert payload["parsed_events"] == 1
+    assert payload["source_results"]["hermes"]["source_provider"] == "deepseek"
 
 
 def test_query_and_recommendations_cli_accept_source_filters(tmp_path: Path) -> None:
@@ -499,6 +579,8 @@ def test_query_and_recommendations_cli_accept_source_filters(tmp_path: Path) -> 
         str(codex_home),
         "--claude-home",
         str(claude_home),
+        "--hermes-home",
+        str(tmp_path / ".hermes"),
         "--json",
     )
     query = _run_cli(

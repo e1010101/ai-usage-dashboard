@@ -11,6 +11,8 @@ from functools import partial
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+from test_hermes_adapter import _make_hermes_home
+
 import codex_usage_tracker.dashboard as dashboard_module
 from codex_usage_tracker.context import load_call_context
 from codex_usage_tracker.dashboard import (
@@ -100,17 +102,20 @@ def test_refresh_is_idempotent_and_summary_works(tmp_path: Path) -> None:
 def test_refresh_all_indexes_codex_and_claude_sources(tmp_path: Path) -> None:
     codex_home = _make_codex_home(tmp_path)
     claude_home = _make_claude_home(tmp_path)
+    hermes_home = _make_hermes_home(tmp_path)
     db_path = tmp_path / "usage.sqlite3"
 
     result = refresh_usage_index(
         codex_home=codex_home,
         claude_home=claude_home,
+        hermes_home=hermes_home,
         db_path=db_path,
         source="all",
     )
     second = refresh_usage_index(
         codex_home=codex_home,
         claude_home=claude_home,
+        hermes_home=hermes_home,
         db_path=db_path,
         source="all",
     )
@@ -118,9 +123,37 @@ def test_refresh_all_indexes_codex_and_claude_sources(tmp_path: Path) -> None:
 
     assert result.source_results["codex"]["parsed_events"] == 4
     assert result.source_results["claude-code"]["parsed_events"] == 2
-    assert result.parsed_events == 6
-    assert second.inserted_or_updated_events == 6
-    assert {row["source_app"] for row in rows} == {"codex", "claude-code"}
+    assert result.source_results["hermes"]["parsed_events"] == 1
+    assert result.source_results["hermes"]["source_provider"] == "deepseek"
+    assert result.parsed_events == 7
+    assert second.inserted_or_updated_events == 7
+    assert {row["source_app"] for row in rows} == {"codex", "claude-code", "hermes"}
+
+
+def test_refresh_hermes_source_indexes_deepseek_sessions(tmp_path: Path) -> None:
+    hermes_home = _make_hermes_home(tmp_path)
+    db_path = tmp_path / "usage.sqlite3"
+
+    result = refresh_usage_index(
+        hermes_home=hermes_home,
+        db_path=db_path,
+        source="hermes",
+    )
+    rows = query_dashboard_events(db_path=db_path, limit=0, include_archived=True)
+
+    assert result.scanned_files == 1
+    assert result.parsed_events == 1
+    assert result.source_results["hermes"]["source_app"] == "hermes"
+    assert rows[0]["source_provider"] == "deepseek"
+    assert rows[0]["source_app"] == "hermes"
+    assert rows[0]["model"] == "deepseek-v4-pro"
+    assert rows[0]["effort"] == "xhigh"
+    assert rows[0]["total_tokens"] == 920
+    assert query_dashboard_event_count(
+        db_path=db_path,
+        source_provider="deepseek",
+        effort="xhigh",
+    ) == 1
 
 
 def test_provider_and_app_filters_work_for_dashboard_queries(tmp_path: Path) -> None:
@@ -131,6 +164,7 @@ def test_provider_and_app_filters_work_for_dashboard_queries(tmp_path: Path) -> 
     refresh_usage_index(
         codex_home=codex_home,
         claude_home=claude_home,
+        hermes_home=tmp_path / ".hermes",
         db_path=db_path,
         source="all",
     )
@@ -514,6 +548,9 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "SECRET RAW PROMPT" not in dashboard_js
     assert "SECRET RAW PROMPT" not in dashboard_css
     assert "SECRET RAW PROMPT" not in csv_text
+    assert 'rel="icon" type="image/svg+xml"' in dashboard
+    assert 'href="data:image/svg+xml,' in dashboard
+    assert 'href="data:,"' not in dashboard
     assert 'href="codex-usage-tracker-assets/dashboard.css?v=' in dashboard
     assert 'src="codex-usage-tracker-assets/dashboard_format.js?v=' in dashboard
     assert 'src="codex-usage-tracker-assets/dashboard_data.js?v=' in dashboard
@@ -541,6 +578,9 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "Source" in dashboard
     assert "providerEl" in dashboard_js
     assert "appEl" in dashboard_js
+    assert "threadScopeEl" in dashboard_js
+    assert "threadScopeMatches(row, threadScope)" in dashboard_js
+    assert "isSpawnedWork(row)" in dashboard_js
     assert "renderProviderTabs" in dashboard_js
     assert "sourceCatalogRows" in dashboard_js
     assert "Claude Code" in dashboard_js
@@ -658,6 +698,10 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "parent_thread_name" in dashboard
     assert "thread_attachment_label" in dashboard
     assert "thread_attachment_relation" in dashboard
+    assert 'id="threadScope"' in dashboard
+    assert '<option value="">All threads</option>' in dashboard
+    assert '<option value="parents">Parent threads only</option>' in dashboard
+    assert '<option value="spawned">Spawned threads only</option>' in dashboard
     assert "explicit parent thread" in dashboard_surface
     assert "spawned from" in dashboard_js
     assert "spawned threads" in dashboard_js
@@ -916,6 +960,8 @@ def test_dashboard_usage_analytics_contract(tmp_path: Path) -> None:
         assert symbol in dashboard_js
     assert "window drivers" in dashboard_js
     assert "to exhaustion at current pace" in dashboard_js
+    assert "pricingSource.sources" in dashboard_js
+    assert "Fetched from sources:" in dashboard_js
     assert ".burn-spark" in dashboard_css
     assert "notation: 'compact'" in dashboard_format_js
     # The SVG chart is hand-rolled; styling stays offline-safe.
@@ -962,6 +1008,30 @@ def test_dashboard_payload_contract_includes_analysis_metadata(tmp_path: Path) -
         "project_key",
         "thread_attachment_label",
     } <= set(row)
+
+
+def test_dashboard_payload_preserves_multi_source_pricing_metadata(tmp_path: Path) -> None:
+    codex_home = _make_codex_home(tmp_path)
+    db_path = tmp_path / "usage.sqlite3"
+    pricing_path = _write_pricing(tmp_path / "pricing.json")
+    raw = json.loads(pricing_path.read_text(encoding="utf-8"))
+    raw["_source"] = {
+        "name": "OpenAI and DeepSeek pricing docs",
+        "url": "https://example.test/openai-pricing",
+        "tier": "standard",
+        "fetched_at": "2026-07-03T00:00:00+00:00",
+        "sources": [
+            {"name": "OpenAI Developers pricing docs", "url": "https://example.test/openai"},
+            {"name": "DeepSeek API pricing docs", "url": "https://example.test/deepseek"},
+        ],
+    }
+    pricing_path.write_text(json.dumps(raw), encoding="utf-8")
+    refresh_usage_index(codex_home=codex_home, db_path=db_path)
+
+    payload = dashboard_payload(db_path=db_path, pricing_path=pricing_path)
+
+    assert payload["pricing_source"]["sources"][1]["name"] == "DeepSeek API pricing docs"
+    assert payload["pricing_source"]["sources"][1]["url"] == "https://example.test/deepseek"
 
 
 def test_dashboard_payload_can_compact_live_rows_and_load_full_row_detail(
@@ -1085,6 +1155,7 @@ def test_dashboard_payload_exposes_claude_limit_windows(tmp_path: Path) -> None:
     refresh_usage_index(
         codex_home=codex_home,
         claude_home=claude_home,
+        hermes_home=tmp_path / ".hermes",
         db_path=db_path,
         source="all",
     )
@@ -1292,7 +1363,7 @@ def test_dashboard_server_usage_row_api_loads_full_aggregate_row(tmp_path: Path)
     assert "recommended_action" in row_payload["row"]
 
 
-def test_dashboard_history_scope_excludes_archived_rows_by_default(tmp_path: Path) -> None:
+def test_dashboard_history_scope_includes_archived_rows_by_default(tmp_path: Path) -> None:
     codex_home = _make_codex_home(tmp_path)
     _write_archived_log(codex_home)
     db_path = tmp_path / "usage.sqlite3"
@@ -1302,12 +1373,17 @@ def test_dashboard_history_scope_excludes_archived_rows_by_default(tmp_path: Pat
         include_archived=True,
     )
 
-    active_payload = dashboard_payload(db_path=db_path, limit=0)
+    default_payload = dashboard_payload(db_path=db_path, limit=0)
+    active_payload = dashboard_payload(db_path=db_path, limit=0, include_archived=False)
     all_history_payload = dashboard_payload(db_path=db_path, limit=0, include_archived=True)
     active_rows = query_dashboard_events(db_path=db_path, limit=0, include_archived=False)
     all_rows = query_dashboard_events(db_path=db_path, limit=0, include_archived=True)
 
     assert refresh_result.parsed_events == 5
+    assert default_payload["include_archived"] is True
+    assert default_payload["history_scope"] == "all-history"
+    assert default_payload["loaded_row_count"] == 5
+    assert default_payload["total_available_rows"] == 5
     assert active_payload["include_archived"] is False
     assert active_payload["history_scope"] == "active"
     assert active_payload["loaded_row_count"] == 4
@@ -1547,6 +1623,7 @@ def test_mcp_wrappers_smoke(tmp_path: Path, monkeypatch) -> None:
     projects_path = tmp_path / "projects.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_CODEX_HOME", codex_home)
     monkeypatch.setattr(mcp_server, "DEFAULT_CLAUDE_HOME", tmp_path / ".claude")
+    monkeypatch.setattr(mcp_server, "DEFAULT_HERMES_HOME", tmp_path / ".hermes")
     monkeypatch.setattr(mcp_server, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(mcp_server, "DEFAULT_DASHBOARD_PATH", dashboard_path)
     monkeypatch.setattr(mcp_server, "DEFAULT_PRICING_PATH", pricing_path)
@@ -1799,6 +1876,9 @@ def test_dashboard_defaults_to_this_week_without_load_cap_control(tmp_path: Path
     dashboard_js = (tmp_path / "codex-usage-tracker-assets" / "dashboard.js").read_text(
         encoding="utf-8"
     )
+    dashboard_state_js = (
+        tmp_path / "codex-usage-tracker-assets" / "dashboard_state.js"
+    ).read_text(encoding="utf-8")
 
     assert '<option value="this-week" selected>This week</option>' in dashboard
     assert '<option value="all" selected>All time</option>' not in dashboard
@@ -1807,6 +1887,13 @@ def test_dashboard_defaults_to_this_week_without_load_cap_control(tmp_path: Path
     assert "limit: 'all'" in dashboard_js
     assert "params.set('since'" in dashboard_js
     assert "params.set('until'" in dashboard_js
+    assert '<option value="active" selected>Active sessions only</option>' not in dashboard
+    assert '<option value="all" selected>All history</option>' in dashboard
+    assert '"include_archived": true' in dashboard
+    assert "params.get('history') === 'active'" in dashboard_state_js
+    assert "state.historyScope === 'active'" in dashboard_state_js
+    assert "params.get('thread_type') === 'parents'" in dashboard_state_js
+    assert "state.threadScope === 'spawned'" in dashboard_state_js
 
 
 def _synthetic_usage_event(record_id: str, event_timestamp: str) -> UsageEvent:
@@ -2083,14 +2170,23 @@ def _fake_pricing_update(
     path: Path,
     tier: str = "standard",
     include_estimates: bool = True,
+    include_deepseek: bool = False,
 ) -> PricingUpdateResult:
     return PricingUpdateResult(
         path=path,
         source_url="https://example.test/pricing.md",
         tier=tier,
         fetched_at="2026-05-17T00:00:00+00:00",
-        model_count=1,
+        model_count=1 + int(include_deepseek),
         estimated_model_count=1 if include_estimates else 0,
+        deepseek_model_count=1 if include_deepseek else 0,
+        alias_count=2 if include_deepseek else 0,
+        source_urls=(
+            "https://example.test/pricing.md",
+            "https://example.test/deepseek-pricing",
+        )
+        if include_deepseek
+        else ("https://example.test/pricing.md",),
         backup_path=None,
     )
 

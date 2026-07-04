@@ -10,6 +10,7 @@ Refresh the local aggregate index:
 ai-usage-dashboard refresh
 ai-usage-dashboard refresh --source all
 ai-usage-dashboard refresh --source claude-code --claude-home ~/.claude
+ai-usage-dashboard refresh --source hermes --hermes-home "%LOCALAPPDATA%\hermes"
 ```
 
 Rebuild the local aggregate index after parser or schema changes:
@@ -19,7 +20,7 @@ ai-usage-dashboard rebuild-index
 ai-usage-dashboard rebuild-index --source all
 ```
 
-`refresh` defaults to the Codex source at `~/.codex/sessions`. `--source claude-code` scans Claude Code JSONL files under `~/.claude/projects`, and `--source all` scans every supported source. `rebuild-index` clears only the local aggregate `usage_events` and refresh metadata tables, then rescans the selected local sources.
+`refresh` defaults to `--source all`, which scans every supported source whose local root exists. Use `--source codex` for Codex JSONL files at `~/.codex/sessions`, `--source claude-code` for Claude Code JSONL files under `~/.claude/projects`, or `--source hermes` for Hermes aggregate `state.db` under `%LOCALAPPDATA%\hermes` on Windows or `~/.hermes` elsewhere. `rebuild-index` clears only the local aggregate `usage_events` and refresh metadata tables, then rescans the selected local sources.
 
 Inspect one source log without writing to SQLite:
 
@@ -35,7 +36,7 @@ ai-usage-dashboard inspect-log ~/.claude/projects/<project>/<session>.jsonl --js
 
 ```bash
 ai-usage-dashboard dashboard --open
-ai-usage-dashboard dashboard --include-archived --open
+ai-usage-dashboard dashboard --active-only --open
 ai-usage-dashboard open-dashboard
 ai-usage-dashboard serve-dashboard --open
 ai-usage-dashboard serve-dashboard --source all --open
@@ -44,7 +45,7 @@ ai-usage-dashboard serve-dashboard --no-context-api --open
 
 `serve-dashboard --context-api explicit` is the default and keeps context loading as an explicit per-row action. `serve-dashboard --no-context-api` or `--context-api disabled` serves live aggregate refresh while disabling `/api/context` entirely.
 
-Dashboards default to active sessions only. Use `--include-archived` for an all-history static/opened dashboard, or switch the served dashboard's `History` control from `Active sessions only` to `All history` when you intentionally want archived logs scanned and included.
+Dashboards default to all history. Use `--active-only` for an active-session static/opened dashboard, or switch the served dashboard's `History` control from `All history` to `Active sessions only` when you intentionally want archived rows hidden. `--include-archived` remains accepted for compatibility and is now the dashboard default.
 
 The localhost `/api/usage` endpoint accepts `limit` and `offset` query parameters, so automation can page aggregate rows without asking the server to load an entire large history at once.
 
@@ -74,7 +75,7 @@ Useful investigations:
 - Sort by `Cache` to find threads that are mostly new context versus mostly reused context.
 - Sort by `Context` to find calls approaching the model context window.
 - Filter by model or reasoning effort to compare usage patterns across model choices.
-- Group by `source_app` or `source_provider` to compare Codex and Claude Code aggregate usage.
+- Group by `source_app` or `source_provider` to compare Codex, Claude Code, Hermes, and provider aggregate usage.
 - Use `summary --preset by-subagent-role` to see whether delegated work is driving a large share of usage.
 - Use `expensive --limit 10` for a quick list of the highest-cost calls.
 - Use `recommendations --json` for ranked action rows and thread rollups with severity score, primary recommendation, and secondary signals.
@@ -84,6 +85,7 @@ Useful investigations:
 ```bash
 ai-usage-dashboard query --since 2026-06-01 --project ai-usage-dashboard --min-credits 1
 ai-usage-dashboard query --source-app claude-code
+ai-usage-dashboard query --source-app hermes
 ai-usage-dashboard query --source-provider anthropic --limit 0
 ai-usage-dashboard query --pricing-status unpriced --limit 0
 ai-usage-dashboard recommendations --since 2026-06-01 --json
@@ -136,7 +138,7 @@ ai-usage-dashboard init-projects
 
 Local config files live under `~/.codex-usage-tracker/` and are never committed by this project.
 
-`update-pricing` still refreshes OpenAI-published text-token pricing only. Configure non-OpenAI model prices manually in `~/.codex-usage-tracker/pricing.json` when you want USD estimates for Claude Code rows.
+`update-pricing` refreshes OpenAI-published text-token pricing by default. Add `--include-deepseek` to include DeepSeek API pricing and compatibility aliases in the same local cache. Configure other non-OpenAI model prices manually in `~/.codex-usage-tracker/pricing.json` when you want USD estimates for rows whose provider is not covered by the updater.
 
 `install-claude-limits-statusline` updates `~/.claude/settings.json` so Claude Code calls the tracker from its `statusLine` command. If you already have a status line, the installer wraps and preserves that command and writes a backup of the settings file before changing it.
 

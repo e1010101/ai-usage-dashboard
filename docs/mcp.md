@@ -66,9 +66,9 @@ The companion skill cannot read your logged-in Codex account plan, native remain
 
 `usage_doctor`, `usage_summary`, `usage_recommendations`, `session_usage`, `most_expensive_usage_calls`, and `usage_pricing_coverage` accept `response_format="json"` when an agent needs stable structured output instead of markdown.
 
-`refresh_usage_index`, `usage_query`, `generate_usage_dashboard`, `export_usage_csv`, and config-writing MCP tools return JSON dictionaries directly.
+`refresh_usage_index`, `usage_query`, `generate_usage_dashboard`, `export_usage_csv`, and config-writing MCP tools return JSON dictionaries directly. Pass `include_deepseek=True` to `update_usage_pricing_config` when you want DeepSeek API pricing and aliases included in the local pricing cache.
 
-`refresh_usage_index(include_archived=True)` and `generate_usage_dashboard(include_archived=True)` are explicit all-history opt-ins. The default dashboard view excludes archived session rows so older work does not inflate the current usage picture.
+`refresh_usage_index(include_archived=True)` is an explicit all-history refresh opt-in. `generate_usage_dashboard()` defaults to all history so dashboard time filters cover archived and active rows together; pass `include_archived=False` when you want an active-session-only dashboard.
 
 ## Raw Context Guard
 

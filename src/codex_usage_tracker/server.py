@@ -29,6 +29,7 @@ from codex_usage_tracker.paths import (
     DEFAULT_CLAUDE_LIMITS_PATH,
     DEFAULT_CODEX_HOME,
     DEFAULT_DASHBOARD_PATH,
+    DEFAULT_HERMES_HOME,
     DEFAULT_LIMIT_HISTORY_PATH,
     DEFAULT_PRICING_PATH,
     DEFAULT_PROJECTS_PATH,
@@ -53,8 +54,9 @@ def serve_dashboard(
     open_browser: bool = False,
     codex_home: Path = DEFAULT_CODEX_HOME,
     claude_home: Path = DEFAULT_CLAUDE_HOME,
+    hermes_home: Path = DEFAULT_HERMES_HOME,
     source: str = SOURCE_CODEX,
-    include_archived: bool = False,
+    include_archived: bool = True,
     context_api: str = "explicit",
     thresholds_path: Path = DEFAULT_THRESHOLDS_PATH,
     projects_path: Path = DEFAULT_PROJECTS_PATH,
@@ -100,6 +102,7 @@ def serve_dashboard(
         since=since,
         codex_home=codex_home,
         claude_home=claude_home,
+        hermes_home=hermes_home,
         source=source,
         include_archived=include_archived,
         dashboard_name=output.name,
@@ -145,6 +148,7 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
         refresh_lock: threading.Lock,
         claude_limits_path: Path = DEFAULT_CLAUDE_LIMITS_PATH,
         claude_home: Path = DEFAULT_CLAUDE_HOME,
+        hermes_home: Path = DEFAULT_HERMES_HOME,
         source: str = SOURCE_CODEX,
         privacy_mode: str = "normal",
         rate_card_path: Path = DEFAULT_RATE_CARD_PATH,
@@ -164,6 +168,7 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
         self._since = since
         self._codex_home = codex_home
         self._claude_home = claude_home
+        self._hermes_home = hermes_home
         self._source = source
         self._include_archived = include_archived
         self._dashboard_name = dashboard_name
@@ -273,6 +278,7 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
                     result = refresh_usage_index(
                         codex_home=self._codex_home,
                         claude_home=self._claude_home,
+                        hermes_home=self._hermes_home,
                         db_path=self._db_path,
                         include_archived=include_archived,
                         source=self._source,

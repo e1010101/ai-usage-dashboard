@@ -17,6 +17,13 @@ from codex_usage_tracker.pricing_config import (
     pin_pricing_snapshot,
     write_pricing_template,
 )
+from codex_usage_tracker.pricing_deepseek import (
+    DEEPSEEK_COMPATIBILITY_ALIASES,
+    DEEPSEEK_PRICING_SOURCE_NAME,
+    DEEPSEEK_PRICING_URL,
+    DeepSeekPricingParseError,
+    parse_deepseek_pricing_html,
+)
 from codex_usage_tracker.pricing_estimates import (
     ESTIMATED_MODEL_PRICES,
     OPENAI_CODEX_LAUNCH_URL,
@@ -34,6 +41,10 @@ from codex_usage_tracker.pricing_openai import (
 
 __all__ = [
     "ESTIMATED_MODEL_PRICES",
+    "DEEPSEEK_COMPATIBILITY_ALIASES",
+    "DEEPSEEK_PRICING_SOURCE_NAME",
+    "DEEPSEEK_PRICING_URL",
+    "DeepSeekPricingParseError",
     "OPENAI_CODEX_LAUNCH_URL",
     "OPENAI_CODEX_RATE_CARD_URL",
     "OPENAI_GPT_53_CODEX_MODEL_URL",
@@ -49,6 +60,7 @@ __all__ = [
     "estimate_cache_savings_usd",
     "estimate_cost_usd",
     "load_pricing_config",
+    "parse_deepseek_pricing_html",
     "parse_openai_pricing_markdown",
     "pin_pricing_snapshot",
     "summarize_pricing_coverage",

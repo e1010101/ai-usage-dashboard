@@ -121,7 +121,7 @@ def dashboard_payload(
     thresholds_path: Path = DEFAULT_THRESHOLDS_PATH,
     projects_path: Path = DEFAULT_PROJECTS_PATH,
     privacy_mode: str = "normal",
-    include_archived: bool = False,
+    include_archived: bool = True,
     compact_rows: bool = False,
     limit_history_path: Path = DEFAULT_LIMIT_HISTORY_PATH,
 ) -> dict[str, object]:
@@ -257,7 +257,7 @@ def dashboard_record_payload(
     thresholds_path: Path = DEFAULT_THRESHOLDS_PATH,
     projects_path: Path = DEFAULT_PROJECTS_PATH,
     privacy_mode: str = "normal",
-    include_archived: bool = False,
+    include_archived: bool = True,
     limit_history_path: Path = DEFAULT_LIMIT_HISTORY_PATH,
 ) -> dict[str, Any] | None:
     """Return one fully annotated aggregate usage row by record id."""
@@ -303,7 +303,7 @@ def generate_dashboard(
     thresholds_path: Path = DEFAULT_THRESHOLDS_PATH,
     projects_path: Path = DEFAULT_PROJECTS_PATH,
     privacy_mode: str = "normal",
-    include_archived: bool = False,
+    include_archived: bool = True,
     limit_history_path: Path = DEFAULT_LIMIT_HISTORY_PATH,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from codex_usage_tracker import pricing as pricing_module
 from codex_usage_tracker.pricing import (
     ESTIMATED_MODEL_PRICES,
     OPENAI_PRICING_MD_URL,
@@ -31,6 +32,32 @@ OPENAI_PRICING_FIXTURE = """
     ["gpt-5.5 (<272K context length)", 2.5, 0.25, 15],
   ]}
 />
+"""
+
+DEEPSEEK_PRICING_FIXTURE = """
+<table>
+  <tr>
+    <td colspan="2">MODEL</td>
+    <td>deepseek-v4-flash<sup>(1)</sup></td>
+    <td>deepseek-v4-pro</td>
+  </tr>
+  <tr>
+    <td rowspan="3">PRICING</td>
+    <td>1M INPUT TOKENS (CACHE HIT)</td>
+    <td>$0.0028</td>
+    <td>$0.003625</td>
+  </tr>
+  <tr>
+    <td>1M INPUT TOKENS (CACHE MISS)</td>
+    <td>$0.14</td>
+    <td>$0.435</td>
+  </tr>
+  <tr>
+    <td>1M OUTPUT TOKENS</td>
+    <td>$0.28</td>
+    <td>$0.87</td>
+  </tr>
+</table>
 """
 
 
@@ -81,6 +108,21 @@ def test_parse_openai_pricing_markdown_reports_schema_changes() -> None:
             raise AssertionError("expected PricingParseError")
 
 
+def test_parse_deepseek_pricing_html() -> None:
+    models = pricing_module.parse_deepseek_pricing_html(DEEPSEEK_PRICING_FIXTURE)
+
+    assert models["deepseek-v4-flash"] == {
+        "input_per_million": 0.14,
+        "cached_input_per_million": 0.0028,
+        "output_per_million": 0.28,
+    }
+    assert models["deepseek-v4-pro"] == {
+        "input_per_million": 0.435,
+        "cached_input_per_million": 0.003625,
+        "output_per_million": 0.87,
+    }
+
+
 def test_update_pricing_from_openai_docs_writes_source_metadata(tmp_path: Path) -> None:
     pricing_path = tmp_path / "pricing.json"
 
@@ -107,6 +149,45 @@ def test_update_pricing_from_openai_docs_writes_source_metadata(tmp_path: Path) 
     assert config.is_estimated_model("codex-auto-review")
     assert config.models["gpt-5.3-codex-spark"]["input_per_million"] == 1.75
     assert config.is_estimated_model("gpt-5.3-codex-spark")
+
+
+def test_update_pricing_from_openai_docs_can_include_deepseek_docs(tmp_path: Path) -> None:
+    pricing_path = tmp_path / "pricing.json"
+
+    result = update_pricing_from_openai_docs(
+        pricing_path,
+        fetch_text=lambda url: OPENAI_PRICING_FIXTURE
+        if url == OPENAI_PRICING_MD_URL
+        else DEEPSEEK_PRICING_FIXTURE,
+        include_deepseek=True,
+    )
+    raw = json.loads(pricing_path.read_text(encoding="utf-8"))
+    config = load_pricing_config(pricing_path)
+    coverage = summarize_pricing_coverage(
+        [
+            {
+                "group_key": "deepseek-chat",
+                "total_tokens": 2_000_000,
+                "input_tokens": 1_000_000,
+                "cached_input_tokens": 250_000,
+                "uncached_input_tokens": 750_000,
+                "output_tokens": 1_000_000,
+            }
+        ],
+        pricing=config,
+    )
+
+    assert result.model_count == 7
+    assert result.deepseek_model_count == 2
+    assert result.source_urls == (OPENAI_PRICING_MD_URL, pricing_module.DEEPSEEK_PRICING_URL)
+    assert raw["_source"]["sources"][1]["name"] == "DeepSeek API pricing docs"
+    assert raw["aliases"]["deepseek-chat"] == "deepseek-v4-flash"
+    assert raw["aliases"]["deepseek-reasoner"] == "deepseek-v4-flash"
+    assert config.priced_as("deepseek-reasoner") == "deepseek-v4-flash"
+    assert coverage["priced_model_count"] == 1
+    assert coverage["rows"][0]["priced_as"] == "deepseek-v4-flash"
+    assert coverage["rows"][0]["pricing_estimated"] is False
+    assert coverage["estimated_cost_usd"] == 0.3857
 
 
 def test_update_pricing_from_openai_docs_can_skip_estimates(tmp_path: Path) -> None:

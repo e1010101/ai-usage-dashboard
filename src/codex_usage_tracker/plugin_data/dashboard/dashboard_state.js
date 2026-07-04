@@ -13,6 +13,7 @@
     'date',
     'from',
     'to',
+    'thread_type',
     'history',
     'sort',
     'direction',
@@ -41,7 +42,8 @@
       datePreset: clean(params.get('date')),
       dateStart: clean(params.get('from')),
       dateEnd: clean(params.get('to')),
-      historyScope: params.get('history') === 'all' ? 'all' : '',
+      threadScope: params.get('thread_type') === 'parents' ? 'parents' : params.get('thread_type') === 'spawned' ? 'spawned' : '',
+      historyScope: params.get('history') === 'active' ? 'active' : params.get('history') === 'all' ? 'all' : '',
       sort: clean(params.get('sort')),
       direction: ALLOWED_DIRECTIONS.has(params.get('direction')) ? params.get('direction') : '',
       preset: clean(params.get('preset')),
@@ -66,7 +68,8 @@
     set(params, 'date', state.datePreset && state.datePreset !== 'all' ? state.datePreset : '');
     set(params, 'from', state.dateStart);
     set(params, 'to', state.dateEnd);
-    set(params, 'history', state.historyScope === 'all' ? 'all' : '');
+    set(params, 'thread_type', state.threadScope === 'parents' ? 'parents' : state.threadScope === 'spawned' ? 'spawned' : '');
+    set(params, 'history', state.historyScope === 'active' ? 'active' : state.historyScope === 'all' ? 'all' : '');
     set(params, 'sort', state.sort && state.sort !== 'time' ? state.sort : '');
     set(params, 'direction', ALLOWED_DIRECTIONS.has(state.direction) ? state.direction : '');
     set(params, 'preset', state.preset);
