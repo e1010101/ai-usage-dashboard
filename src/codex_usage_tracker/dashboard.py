@@ -310,6 +310,7 @@ def generate_dashboard(
     guide_href = _dashboard_guide_href(output_path)
     asset_base = _dashboard_assets_href(output_path)
     stylesheet_href = _versioned_asset_href(output_path, asset_base, "dashboard.css")
+    favicon_href = _versioned_asset_href(output_path, asset_base, "favicon.svg")
     format_script_src = _versioned_asset_href(output_path, asset_base, "dashboard_format.js")
     data_script_src = _versioned_asset_href(output_path, asset_base, "dashboard_data.js")
     state_script_src = _versioned_asset_href(output_path, asset_base, "dashboard_state.js")
@@ -341,6 +342,7 @@ def generate_dashboard(
             payload,
             guide_href=guide_href,
             stylesheet_href=stylesheet_href,
+            favicon_href=favicon_href,
             format_script_src=format_script_src,
             data_script_src=data_script_src,
             state_script_src=state_script_src,
@@ -596,6 +598,7 @@ def _html(
     guide_href: str | None = None,
     *,
     stylesheet_href: str = "codex-usage-tracker-assets/dashboard.css",
+    favicon_href: str = "codex-usage-tracker-assets/favicon.svg",
     format_script_src: str = "codex-usage-tracker-assets/dashboard_format.js",
     data_script_src: str = "codex-usage-tracker-assets/dashboard_data.js",
     state_script_src: str = "codex-usage-tracker-assets/dashboard_state.js",
@@ -610,6 +613,7 @@ def _html(
     return (
         template.replace("__TITLE__", html.escape("AI Usage Dashboard"))
         .replace("__STYLESHEET_HREF__", html.escape(stylesheet_href, quote=True))
+        .replace("__FAVICON_HREF__", html.escape(favicon_href, quote=True))
         .replace("__GUIDE_LINK__", guide_link)
         .replace("__PAYLOAD__", payload)
         .replace("__FORMAT_SCRIPT_SRC__", html.escape(format_script_src, quote=True))

@@ -533,6 +533,7 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     dashboard_data_js = (asset_dir / "dashboard_data.js").read_text(encoding="utf-8")
     dashboard_state_js = (asset_dir / "dashboard_state.js").read_text(encoding="utf-8")
     dashboard_css = (asset_dir / "dashboard.css").read_text(encoding="utf-8")
+    favicon_svg = asset_dir / "favicon.svg"
     dashboard_surface = "\n".join([
         dashboard,
         dashboard_format_js,
@@ -548,8 +549,10 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "SECRET RAW PROMPT" not in dashboard_js
     assert "SECRET RAW PROMPT" not in dashboard_css
     assert "SECRET RAW PROMPT" not in csv_text
+    assert favicon_svg.exists()
     assert 'rel="icon" type="image/svg+xml"' in dashboard
-    assert 'href="data:image/svg+xml,' in dashboard
+    assert 'href="codex-usage-tracker-assets/favicon.svg?v=' in dashboard
+    assert 'href="data:image/svg+xml,' not in dashboard
     assert 'href="data:,"' not in dashboard
     assert 'href="codex-usage-tracker-assets/dashboard.css?v=' in dashboard
     assert 'src="codex-usage-tracker-assets/dashboard_format.js?v=' in dashboard
