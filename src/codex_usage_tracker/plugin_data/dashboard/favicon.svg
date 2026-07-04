@@ -2,5 +2,4 @@
   <rect width="64" height="64" rx="12" fill="#071118"/>
   <path d="M14 46V26h7v20h-7Zm14 0V16h7v30h-7Zm14 0V32h7v14h-7Z" fill="#00d4ff"/>
   <path d="M11 51h42" stroke="#ff4fd8" stroke-width="5" stroke-linecap="round"/>
-  <text x="32" y="24" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="700" fill="#ffffff">AI</text>
 </svg>

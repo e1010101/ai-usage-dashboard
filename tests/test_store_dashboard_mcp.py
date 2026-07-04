@@ -550,6 +550,7 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "SECRET RAW PROMPT" not in dashboard_css
     assert "SECRET RAW PROMPT" not in csv_text
     assert favicon_svg.exists()
+    assert "<text" not in favicon_svg.read_text(encoding="utf-8")
     assert 'rel="icon" type="image/svg+xml"' in dashboard
     assert 'href="codex-usage-tracker-assets/favicon.svg?v=' in dashboard
     assert 'href="data:image/svg+xml,' not in dashboard
