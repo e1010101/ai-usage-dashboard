@@ -677,9 +677,11 @@
       });
     }
     const trendHourFormat = new Intl.DateTimeFormat([], { hour: 'numeric' });
+    const trendHourDateFormat = new Intl.DateTimeFormat([], { month: 'short', day: 'numeric', hour: 'numeric' });
     const trendDayFormat = new Intl.DateTimeFormat([], { month: 'short', day: 'numeric' });
     const trendMonthFormat = new Intl.DateTimeFormat([], { month: 'short', year: 'numeric' });
     const trendProviderOrder = ['openai', 'anthropic', 'other'];
+    const dailyTrendPresets = new Set(['this-week', 'last-7-days']);
     function trendProviderKey(row) {
       if (row.source_provider === 'openai') return 'openai';
       if (row.source_provider === 'anthropic') return 'anthropic';
@@ -690,8 +692,9 @@
       if (key === 'anthropic') return providerShortName('anthropic');
       return 'Other';
     }
-    function trendUnitFor(startMs, endMs) {
+    function trendUnitFor(startMs, endMs, preset = '') {
       const spanDays = (endMs - startMs) / 86400000;
+      if (dailyTrendPresets.has(preset)) return 'day';
       if (spanDays <= 3.05) return 'hour';
       if (spanDays <= 130) return 'day';
       if (spanDays <= 740) return 'week';
@@ -709,9 +712,9 @@
       if (unit === 'month') return new Date(date.getFullYear(), date.getMonth() + 1, 1);
       return addDays(date, 1);
     }
-    function trendBucketLabel(ms, unit) {
+    function trendBucketLabel(ms, unit, showDateForHour = false) {
       const date = new Date(ms);
-      if (unit === 'hour') return trendHourFormat.format(date);
+      if (unit === 'hour') return showDateForHour ? trendHourDateFormat.format(date) : trendHourFormat.format(date);
       if (unit === 'month') return trendMonthFormat.format(date);
       return trendDayFormat.format(date);
     }
@@ -736,7 +739,10 @@
         ? Math.min(dateRange.endExclusive.getTime(), nowMs + 3600000)
         : Math.max(...stamps.map(stamp => stamp.ts.getTime())) + 1;
       if (endMs <= startMs) endMs = startMs + 1;
-      const unit = trendUnitFor(startMs, endMs);
+      const preset = allowedDatePresets.has(datePresetEl.value) ? datePresetEl.value : 'all';
+      const unit = trendUnitFor(startMs, endMs, preset);
+      const showDateForHour = unit === 'hour'
+        && localDateKey(new Date(startMs)) !== localDateKey(new Date(Math.max(startMs, endMs - 1)));
       const buckets = new Map();
       let cursor = trendBucketDate(new Date(startMs), unit);
       let guard = 0;
@@ -761,6 +767,7 @@
         unit,
         buckets: ordered,
         providers: trendProviderOrder.filter(provider => seenProviders.has(provider)),
+        showDateForHour,
       };
     }
     function renderUsageTrend(rows, dateRange) {
@@ -781,7 +788,7 @@
       const barWidth = Math.max(Math.min(slot * 0.72, 48), 1.5);
       const bars = trend.buckets.map((bucket, index) => {
         const x = padX + index * slot + (slot - barWidth) / 2;
-        const bucketLabel = trendBucketLabel(bucket.ms, trend.unit);
+        const bucketLabel = trendBucketLabel(bucket.ms, trend.unit, trend.showDateForHour);
         let y = height - padBottom;
         const segments = trendProviderOrder.map(provider => {
           const value = bucket[provider];
@@ -803,7 +810,7 @@
       const labels = [...new Set(labelIndexes)].map(index => {
         const anchor = index === 0 ? 'start' : index === count - 1 ? 'end' : 'middle';
         const x = padX + index * slot + slot / 2;
-        return `<text x="${x.toFixed(2)}" y="${height - 7}" text-anchor="${anchor}">${escapeHtml(trendBucketLabel(trend.buckets[index].ms, trend.unit))}</text>`;
+        return `<text x="${x.toFixed(2)}" y="${height - 7}" text-anchor="${anchor}">${escapeHtml(trendBucketLabel(trend.buckets[index].ms, trend.unit, trend.showDateForHour))}</text>`;
       }).join('');
       const midY = padTop + innerHeight / 2;
       const legend = trend.providers.map(provider => `
