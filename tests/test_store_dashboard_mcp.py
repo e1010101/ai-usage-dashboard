@@ -938,6 +938,9 @@ def test_dashboard_usage_analytics_contract(tmp_path: Path) -> None:
     assert "vs prior" in dashboard_js
     # Live refresh fetches the prior period too, so deltas have data to compare.
     assert "previousPeriodRange(range)" in dashboard_js
+    assert "dailyTrendPresets" in dashboard_js
+    assert "['this-week', 'last-7-days']" in dashboard_js
+    assert "dailyTrendPresets.has(preset)" in dashboard_js
     # Hovering or focusing a chart bar shows a custom tooltip; no native <title> delay.
     assert "trendTooltip" in dashboard
     assert "showTrendTooltip" in dashboard_js
