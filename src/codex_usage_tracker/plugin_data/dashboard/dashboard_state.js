@@ -1,83 +1,81 @@
 (function () {
-  const ALLOWED_VIEWS = new Set(['insights', 'calls', 'threads']);
+  const ALLOWED_VIEWS = new Set(['overview', 'calls']);
+  const ALLOWED_RANGES = new Set(['this-week', 'last-7-days', 'this-month', 'last-30-days', 'all', 'custom']);
+  const ALLOWED_PROVIDERS = new Set(['openai', 'anthropic']);
+  const ALLOWED_SORTS = new Set(['time', 'tokens', 'cost', 'cache']);
   const ALLOWED_DIRECTIONS = new Set(['asc', 'desc']);
   const STATE_KEYS = [
     'view',
     'q',
-    'model',
-    'provider',
-    'app',
-    'effort',
-    'confidence',
-    'pricing',
     'date',
     'from',
     'to',
+    'provider',
+    'model',
+    'effort',
+    'confidence',
     'thread_type',
-    'history',
+    'day',
     'sort',
     'direction',
-    'preset',
     'page',
-    'record',
+    'lpage',
     'thread',
-    'expand',
-    'threads',
+    'record',
   ];
 
   function clean(value) {
     return typeof value === 'string' ? value.trim() : '';
   }
 
+  function positiveInt(value) {
+    const parsed = Number(value || 1);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
+  }
+
   function read(params = new URLSearchParams(window.location.search)) {
-    const page = Number(params.get('page') || 1);
+    const range = clean(params.get('date'));
     return {
-      view: ALLOWED_VIEWS.has(params.get('view')) ? params.get('view') : '',
+      view: ALLOWED_VIEWS.has(params.get('view')) ? params.get('view') : 'overview',
       search: clean(params.get('q')),
-      model: clean(params.get('model')),
-      sourceProvider: clean(params.get('provider')),
-      sourceApp: clean(params.get('app')),
-      effort: clean(params.get('effort')),
-      confidence: clean(params.get('confidence') || params.get('pricing')),
-      datePreset: clean(params.get('date')),
-      dateStart: clean(params.get('from')),
-      dateEnd: clean(params.get('to')),
-      threadScope: params.get('thread_type') === 'parents' ? 'parents' : params.get('thread_type') === 'spawned' ? 'spawned' : '',
-      historyScope: params.get('history') === 'active' ? 'active' : params.get('history') === 'all' ? 'all' : '',
-      sort: clean(params.get('sort')),
-      direction: ALLOWED_DIRECTIONS.has(params.get('direction')) ? params.get('direction') : '',
-      preset: clean(params.get('preset')),
-      page: Number.isFinite(page) && page > 0 ? Math.floor(page) : 1,
-      record: clean(params.get('record')),
-      thread: clean(params.get('thread')),
-      expand: clean(params.get('expand')),
-      expandedThreads: clean(params.get('threads')).split(',').filter(Boolean).slice(0, 30).map(decodePart),
+      range: ALLOWED_RANGES.has(range) ? range : 'this-week',
+      customStart: clean(params.get('from')),
+      customEnd: clean(params.get('to')),
+      provider: ALLOWED_PROVIDERS.has(params.get('provider')) ? params.get('provider') : '',
+      fModel: clean(params.get('model')),
+      fEffort: clean(params.get('effort')),
+      fConfidence: clean(params.get('confidence')),
+      fThreadType: clean(params.get('thread_type')),
+      dayKey: clean(params.get('day')),
+      sortKey: ALLOWED_SORTS.has(params.get('sort')) ? params.get('sort') : 'time',
+      sortDir: ALLOWED_DIRECTIONS.has(params.get('direction')) ? params.get('direction') : '',
+      page: positiveInt(params.get('page')),
+      ledgerPage: positiveInt(params.get('lpage')),
+      selectedThread: clean(params.get('thread')),
+      selectedCall: clean(params.get('record')),
     };
   }
 
   function serialize(state) {
     const params = new URLSearchParams(window.location.search);
     STATE_KEYS.forEach(key => params.delete(key));
-    set(params, 'view', ALLOWED_VIEWS.has(state.view) && state.view !== 'insights' ? state.view : '');
+    set(params, 'view', state.view === 'calls' ? 'calls' : '');
     set(params, 'q', state.search);
-    set(params, 'model', state.model);
-    set(params, 'provider', state.sourceProvider);
-    set(params, 'app', state.sourceApp);
-    set(params, 'effort', state.effort);
-    set(params, 'confidence', state.confidence);
-    set(params, 'date', state.datePreset && state.datePreset !== 'all' ? state.datePreset : '');
-    set(params, 'from', state.dateStart);
-    set(params, 'to', state.dateEnd);
-    set(params, 'thread_type', state.threadScope === 'parents' ? 'parents' : state.threadScope === 'spawned' ? 'spawned' : '');
-    set(params, 'history', state.historyScope === 'active' ? 'active' : state.historyScope === 'all' ? 'all' : '');
-    set(params, 'sort', state.sort && state.sort !== 'time' ? state.sort : '');
-    set(params, 'direction', ALLOWED_DIRECTIONS.has(state.direction) ? state.direction : '');
-    set(params, 'preset', state.preset);
+    set(params, 'date', ALLOWED_RANGES.has(state.range) && state.range !== 'this-week' ? state.range : '');
+    set(params, 'from', state.range === 'custom' ? state.customStart : '');
+    set(params, 'to', state.range === 'custom' ? state.customEnd : '');
+    set(params, 'provider', ALLOWED_PROVIDERS.has(state.provider) ? state.provider : '');
+    set(params, 'model', state.fModel);
+    set(params, 'effort', state.fEffort);
+    set(params, 'confidence', state.fConfidence);
+    set(params, 'thread_type', state.fThreadType);
+    set(params, 'day', state.dayKey);
+    set(params, 'sort', state.sortKey && state.sortKey !== 'time' ? state.sortKey : '');
+    set(params, 'direction', ALLOWED_DIRECTIONS.has(state.sortDir) ? state.sortDir : '');
     set(params, 'page', state.page && Number(state.page) > 1 ? String(Math.floor(Number(state.page))) : '');
-    set(params, 'record', state.record);
-    set(params, 'thread', state.thread);
-    set(params, 'expand', state.expand);
-    set(params, 'threads', Array.isArray(state.expandedThreads) ? state.expandedThreads.slice(0, 30).map(encodeURIComponent).join(',') : '');
+    set(params, 'lpage', state.ledgerPage && Number(state.ledgerPage) > 1 ? String(Math.floor(Number(state.ledgerPage))) : '');
+    set(params, 'thread', state.selectedThread);
+    set(params, 'record', state.selectedCall);
     return params;
   }
 
@@ -96,62 +94,12 @@
   function replace(state) {
     if (!window.history || !window.history.replaceState) return;
     const nextUrl = urlFor(state);
-    if (nextUrl !== window.location.href) {
-      window.history.replaceState(null, '', nextUrl);
-    }
-  }
-
-  async function copyText(text) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.setAttribute('readonly', 'readonly');
-    textarea.style.position = 'fixed';
-    textarea.style.left = '-9999px';
-    document.body.appendChild(textarea);
-    textarea.select();
-    const copied = document.execCommand('copy');
-    textarea.remove();
-    return copied;
-  }
-
-  function downloadText(filename, text, type = 'text/plain;charset=utf-8') {
-    const blob = new Blob([text], { type });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  function toCsv(rows, columns) {
-    const header = columns.map(column => csvCell(column.label)).join(',');
-    const body = rows.map(row => columns.map(column => csvCell(resolveValue(row, column.field))).join(','));
-    return [header, ...body].join('\n') + '\n';
-  }
-
-  function resolveValue(row, field) {
-    if (typeof field === 'function') return field(row);
-    return row && Object.prototype.hasOwnProperty.call(row, field) ? row[field] : '';
-  }
-
-  function csvCell(value) {
-    if (value === null || value === undefined) return '';
-    const text = Array.isArray(value) ? value.join('; ') : String(value);
-    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-  }
-
-  function decodePart(value) {
+    if (nextUrl === window.location.href) return;
     try {
-      return decodeURIComponent(value);
+      window.history.replaceState(null, '', nextUrl);
     } catch (error) {
-      return value;
+      // Some environments (e.g. file: URLs) refuse history updates; the URL
+      // echo is a convenience and must never break rendering.
     }
   }
 
@@ -159,8 +107,5 @@
     read,
     replace,
     urlFor,
-    copyText,
-    downloadText,
-    toCsv,
   };
 }());

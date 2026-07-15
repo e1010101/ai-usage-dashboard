@@ -119,7 +119,7 @@ ai-usage-dashboard expensive --limit 5
 - Pricing coverage clearly separates configured, estimated, and unpriced model usage across sources.
 - Codex credit coverage clearly separates exact rate-card matches, inferred aliases, missing credit rates, and non-Codex rows where credits are not applicable.
 - Source filters and source grouping work consistently across CLI, MCP, dashboard, CSV, and JSON payloads.
-- Dashboard Calls and Threads views share filters, totals, and aggregate-only hover details.
+- Dashboard overview and calls views share the same time/provider/search/advanced filters and aggregate-only details.
 - Dashboard usage docs are updated when the visible dashboard workflow changes, and screenshots must be generated from synthetic data only.
 - Dashboard aggregate refresh is localhost-only and keeps generated HTML aggregate-only; context loading is lazy, localhost-only, explicit, redacted, and not embedded in the static HTML payload.
 - Subagent calls preserve logged parent-session metadata, latch to parent thread labels when available, and auto-review attachment is clearly marked when inferred.

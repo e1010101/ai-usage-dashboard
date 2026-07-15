@@ -65,21 +65,15 @@ Source-refresh commands default to `--source all`. Use `ai-usage-dashboard refre
 
 ## Dashboard Preview
 
-The Calls table is the main investigation surface: filter, sort, inspect details, and export the exact aggregate rows you are looking at.
+The dashboard opens on an answer-first weekly report. An answer strip literally answers "where did my spend go this period?" — total spend and tokens with prior-period deltas, a clickable spend-by-day chart, and remaining 5h/weekly limits per provider.
 
-![Calls view showing filters, totals, the model-call table, and the details panel.](docs/assets/dashboard-calls.png?v=aa16502)
+Below it, the **where it went** ledger ranks threads by spend (subagents and auto-review passes fold into their parent thread) next to a **needs attention** rail capped at three cards: context bloat, low cache reuse, unpriced usage, estimated pricing. Clicking a thread drills into its stats, next action, context-growth sparkline, spawned work, and full call timeline.
 
-Threads view groups related calls so long chats, subagents, and auto-review passes are easier to reason about as one work session.
+A **calls** view keeps the dense per-call table — sortable by time, tokens, cost, and cache — with a call-details rail that surfaces cost, cache, and context signals before collapsed token breakdowns and raw identifiers.
 
-![Threads view with one expanded thread and its calls in chronological order.](docs/assets/dashboard-threads.png?v=3cd7338)
+> Screenshots below still show the previous table-first UI and will be regenerated from synthetic fixtures.
 
-The details panel keeps the primary cost, cache, context, allowance, and pricing signals visible before raw identifiers.
-
-![Details panel showing aggregate fields for the selected usage row.](docs/assets/dashboard-details.png?v=84cf6dd)
-
-Insights still gives a fast triage layer for costly threads, low cache reuse, context bloat, and pricing gaps.
-
-![Insights view with ranked Needs Attention cards, investigation presets, and top threads by attention score.](docs/assets/dashboard-insights.png?v=4a40e4f)
+![Calls view showing the model-call table and the details panel.](docs/assets/dashboard-calls.png?v=aa16502)
 
 The dashboard screenshots use synthetic aggregate fixture data, and the companion prompt and chat previews are synthetic. They do not contain prompts from local logs, assistant responses, tool output, real thread names, real usage totals, or real Codex session content. See the [Dashboard Guide](docs/dashboard-guide.md) for the full walkthrough.
 
@@ -129,13 +123,12 @@ For a Codex-only dashboard, use `--source codex` on `refresh` and `serve-dashboa
 
 Then:
 
-1. Leave `Live` enabled while working, or click `Refresh` after a Codex run finishes.
-2. Start in `Insights` and scan the `Needs Attention` cards.
-3. Use `Time` presets or calendar fields to focus on today, this week, the last 7 days, this month, or a custom range.
-4. Use investigation presets for highest-cost threads, highest-credit calls, context bloat, cache misses, pricing gaps, or estimated-price review.
-5. Open `Threads` to see how a conversation grew and whether subagent or auto-review work attached to it.
-6. Hover or click rows to inspect aggregate fields in `Call Details`.
-7. Use `Load context` only when aggregate fields are not enough; context is fetched on demand from the local source JSONL and is not saved into SQLite or the dashboard.
+1. Leave the `[ live ]` chip on while working; the dashboard refreshes every 10 seconds.
+2. Read the answer strip first: it names the top thread by spend and its main efficiency signal.
+3. Use the range presets (`this week · 7d · month · 30d · all · custom`) or click a spend-chart bar to focus on a day or week.
+4. Work through the `:: needs attention` cards and drill into flagged threads for their timeline and spawned work.
+5. Switch to `calls` view to sort individual calls by cost, tokens, or cache and inspect the call-details rail.
+6. Use `> load context` only when aggregate fields are not enough; context is fetched on demand from the local source JSONL and is not saved into SQLite or the dashboard.
 
 Codex Usage Remaining is read automatically from local Codex JSONL `rate_limits` snapshots when those snapshots are present. Optional manual allowance context is still useful when you want to override a dynamic window, add exact credit totals, or fill in environments without dynamic snapshots:
 
