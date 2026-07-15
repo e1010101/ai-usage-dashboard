@@ -563,75 +563,27 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "CodexUsageDashboardFormat" in dashboard_format_js
     assert "CodexUsageDashboardData" in dashboard_data_js
     assert "CodexUsageDashboardState" in dashboard_state_js
-    assert "copyViewLink" in dashboard
-    assert "exportVisible" in dashboard
-    assert "Copy link" in dashboard
-    assert "Export CSV" in dashboard
     assert "currentDashboardState" in dashboard_js
-    assert "copyCurrentViewLink" in dashboard_js
-    assert "exportCurrentRows" in dashboard_js
     assert "last call" in dashboard_js.lower()
     assert "session cumulative" in dashboard_js.lower()
-    assert "Estimated Cost" in dashboard
     assert "AI Usage Dashboard" in dashboard
-    assert "providerTabs" in dashboard
-    assert "providerSummary" not in dashboard
     assert "source_provider" in dashboard
     assert "source_app" in dashboard
     assert "source_summaries" in dashboard
-    assert "Source" in dashboard
-    assert "providerEl" in dashboard_js
-    assert "appEl" in dashboard_js
-    assert "threadScopeEl" in dashboard_js
-    assert "threadScopeMatches(row, threadScope)" in dashboard_js
-    assert "isSpawnedWork(row)" in dashboard_js
-    assert "renderProviderTabs" in dashboard_js
-    assert "sourceCatalogRows" in dashboard_js
-    assert "Claude Code" in dashboard_js
     assert "providerLimitSnapshots" in dashboard_js
-    assert "Cache read" in dashboard_js
-    assert "Direct input" in dashboard_js
+    assert "cache read" in dashboard_js
+    assert "direct input" in dashboard_js
     assert "source_app" in csv_text
     assert "cache_creation_input_tokens" in csv_text
     assert "estimated_cost_usd" in dashboard
     assert "pricing_snapshot" in dashboard
     assert "rates_fingerprint" in dashboard
-    assert "Input Tokens" in dashboard
-    assert "inputTokens" in dashboard
-    assert "Cache Tokens" in dashboard
-    assert "Output Tokens" in dashboard
-    assert "Usage Limits" in dashboard
-    assert "usageLimits" in dashboard
-    assert "providerDetails" in dashboard
-    assert "Provider Details" in dashboard
-    assert "Price Coverage" not in dashboard
-    assert "priceCoverage" not in dashboard_surface
     assert "usage_credits" in dashboard
     assert "parser_diagnostics" in dashboard
     assert "parserDiagnostics" in dashboard_js
-    assert "privacyMode" in dashboard
+    assert "privacy_mode" in dashboard
+    assert 'id="privacyLine"' in dashboard
     assert "projectMetadataPrivacy" in dashboard_js
-    assert "datePreset" in dashboard
-    assert "dateStart" in dashboard
-    assert "dateEnd" in dashboard
-    assert "dateRangeStatus" in dashboard
-    assert "filter-status-row" in dashboard
-    assert "date-field-custom" in dashboard
-    assert "Today" in dashboard
-    assert "This week" in dashboard
-    assert "Last 7 days" in dashboard
-    assert "This month" in dashboard
-    assert "Custom range" in dashboard
-    assert "currentDateRange" in dashboard_js
-    assert "rowMatchesDateRange" in dashboard_js
-    assert "syncDatePresetInputs" in dashboard_js
-    assert "toggleCustomDateFields" in dashboard_js
-    assert "dateStatusRowEl" in dashboard_js
-    assert "dateStatusRowEl.hidden = !showStatus" in dashboard_js
-    assert "el.disabled = !custom" in dashboard_js
-    assert "datePreset: clean(params.get('date'))" in dashboard_state_js
-    assert "dateStart: clean(params.get('from'))" in dashboard_state_js
-    assert "dateEnd: clean(params.get('to'))" in dashboard_state_js
     assert "api_token" in dashboard
     assert "context_api_enabled" in dashboard
     assert "X-Codex-Usage-Token" in dashboard_js
@@ -640,46 +592,90 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "flag_explanations" in dashboard
     assert "action_recommendations" in dashboard
     assert "action_thresholds" in dashboard
-    assert "Why flagged" in dashboard_js
-    assert "Thread lifecycle" in dashboard_js
-    assert "Largest cumulative jump" in dashboard_js
     assert "project_name" in dashboard
-    assert "Project tags" in dashboard_js
-    assert "Git branch" in dashboard_js
     assert "usage_credit_confidence" in dashboard
     assert "usage_credit_confidence === 'not_applicable'" in dashboard_data_js
     assert "Not applicable" in dashboard_data_js
-    assert "applicableCreditRows" in dashboard_js
-    assert "credit-not-applicable" in dashboard
-    assert "pricingStatus === 'credit-not-applicable'" in dashboard_js
-    assert "Credit rates" in dashboard_js
-    assert "Codex allowance usage" in dashboard_js
-    assert "Highest Codex credits" in dashboard
-    assert "Estimated Tokens" not in dashboard
-    assert "Unpriced Tokens" not in dashboard
-    assert "insightsView" in dashboard
-    assert "callsView" in dashboard
-    assert "threadsView" in dashboard
-    assert "Needs Attention" in dashboard
-    assert "Investigation Presets" in dashboard
-    assert "presetDefinitions" in dashboard_js
-    assert "renderInsightPanel" in dashboard_js
-    assert "attentionScore" in dashboard_js
-    assert "thread-row" in dashboard_surface
-    assert "thread-call-table" in dashboard_surface
-    assert "table-scroll" in dashboard
-    assert ".table-scroll" in dashboard_css
-    assert "overflow-x: auto" in dashboard_css
-    assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in dashboard_css
-    assert "@media (max-width: 1180px)" in dashboard_css
-    assert "@media (max-width: 640px)" in dashboard_css
-    assert ".segmented:not(.provider-tabs)" in dashboard_css
-    assert ".provider-tabs button" in dashboard_css
+    assert "usage_credit_confidence === 'not_applicable'" in dashboard_js
+    assert "n/a credits" in dashboard_js
+    assert "codex credits" in dashboard_js
+    assert "parent_thread_name" in dashboard
+    assert "thread_attachment_label" in dashboard
+    assert "thread_attachment_relation" in dashboard
+    assert "explicit parent thread" in dashboard_surface
+    assert "resolveThreadAttachment" in dashboard_js
+    # Header: prompt echo, live chip, search, range presets, provider switcher, filters.
+    assert "ai-usage-dashboard:~$" in dashboard
+    assert 'id="promptEcho"' in dashboard
+    assert "updatePromptLine" in dashboard_js
+    assert 'id="liveChip"' in dashboard
+    assert "[ unofficial project ]" in dashboard
+    assert 'id="search"' in dashboard
+    for preset in ("this-week", "last-7-days", "this-month", "last-30-days", "all", "custom"):
+        assert f'data-range="{preset}"' in dashboard
+    assert 'id="customStart"' in dashboard
+    assert 'id="customEnd"' in dashboard
+    assert '[ overview ]' in dashboard
+    assert '[ codex ]' in dashboard
+    assert '[ claude code ]' in dashboard
+    assert 'data-provider="openai"' in dashboard
+    assert 'data-provider="anthropic"' in dashboard
+    assert 'id="filtersToggle"' in dashboard
+    assert 'id="filtersPopover"' in dashboard
+    assert "clear filters" in dashboard_js
+    assert "thread type" in dashboard_js
+    # Answer strip: hero, spend chart, limits remaining.
+    assert ":: where did" in dashboard
+    assert ":: limits remaining" in dashboard
+    assert 'id="heroCost"' in dashboard
+    assert 'id="heroSentence"' in dashboard
+    assert 'id="chartBars"' in dashboard
+    assert 'id="limitsGroups"' in dashboard
+    assert "vs last period" in dashboard_js
+    assert "spend by day" in dashboard_js
+    assert "spend by week" in dashboard_js
+    # Overview ledger + rail and calls view + rail.
+    assert "where it went" in dashboard
+    assert "model calls" in dashboard
+    assert "call details" in dashboard
+    assert 'id="ledgerRows"' in dashboard
+    assert 'id="overviewRail"' in dashboard
+    assert 'id="callRows"' in dashboard
+    assert 'id="callRail"' in dashboard
+    assert 'data-view="overview"' in dashboard
+    assert 'data-view="calls"' in dashboard
+    assert "needs attention" in dashboard_js
+    assert "no usage in range" in dashboard_js
+    assert "no calls in range" in dashboard_js
+    assert "cache reuse" in dashboard_js
+    assert "spawned · " in dashboard_js
+    assert "auto-review" in dashboard_js
+    assert 'data-sort-key="time"' in dashboard
+    assert 'data-sort-key="tokens"' in dashboard
+    assert 'data-sort-key="cost"' in dashboard
+    assert 'data-sort-key="cache"' in dashboard
+    assert "state.sortKey !== 'time'" in dashboard_state_js
+    assert "range: ALLOWED_RANGES.has(range) ? range : 'this-week'" in dashboard_state_js
+    # Retired chrome must stay gone.
+    assert "providerTabs" not in dashboard
+    assert "Investigation Presets" not in dashboard
+    assert "Usage Analytics" not in dashboard
+    assert "Provider Details" not in dashboard
+    assert "Export CSV" not in dashboard
+    assert "Copy link" not in dashboard
+    assert 'id="datePreset"' not in dashboard
+    assert "historyScope" not in dashboard
+    assert "trendMetricTokens" not in dashboard
+    assert "insightsView" not in dashboard
+    # Terminal Sunset styling contract.
     assert "theme-sunset" in dashboard
     assert "--neon-pink" in dashboard_css
     assert "--border-interactive" in dashboard_css
     assert "--snap" in dashboard_css
     assert "color-scheme: dark" in dashboard_css
+    assert "@media (max-width: 1180px)" in dashboard_css
+    assert "@media (max-width: 640px)" in dashboard_css
+    assert "scrollbar-width: thin" in dashboard_css
     # Offline guarantee: the stylesheet must never reference external resources.
     assert "url(" not in dashboard_css
     assert "@import" not in dashboard_css
@@ -688,29 +684,8 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "@media (prefers-reduced-motion: reduce)" in dashboard_css
     # transition: all is banned repo-wide; every transition enumerates properties.
     assert "transition: all" not in dashboard_css
-    # Phase 4 hooks: count-up gates on reduced motion, pulse + caret + prompt echo exist.
     assert "prefers-reduced-motion" in dashboard_js
     assert "sunset-pulse" in dashboard_js
-    assert "live-caret" in dashboard_js
-    assert "updatePromptLine" in dashboard_js
-    assert "page-frac" in dashboard_js
-    assert "no calls in range" in dashboard_js
-    assert "Thread attachment" in dashboard_js
-    assert "Subagent type" in dashboard_js
-    assert "Auto-review" in dashboard_js
-    assert "Load context" in dashboard_js
-    assert "parent_thread_name" in dashboard
-    assert "thread_attachment_label" in dashboard
-    assert "thread_attachment_relation" in dashboard
-    assert 'id="threadScope"' in dashboard
-    assert '<option value="">All threads</option>' in dashboard
-    assert '<option value="parents">Parent threads only</option>' in dashboard
-    assert '<option value="spawned">Spawned threads only</option>' in dashboard
-    assert "explicit parent thread" in dashboard_surface
-    assert "spawned from" in dashboard_js
-    assert "spawned threads" in dashboard_js
-    assert "Aggregate only" not in dashboard
-    assert "Call Details" in dashboard
     assert "Dashboard guide" in dashboard
     assert "github.com/douglasmonsky/codex-usage-tracker/blob/main/docs/dashboard-guide.md" not in dashboard
     assert "codex-usage-tracker-guide/dashboard-guide.html" in dashboard
@@ -721,42 +696,16 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert (asset_dir / "dashboard_data.js").exists()
     assert (asset_dir / "dashboard_state.js").exists()
     assert (asset_dir / "dashboard.css").exists()
-    assert "detail-section" in dashboard
-    assert "time-cell" in dashboard_surface
     assert "formatTimestamp" in dashboard_js
-    assert "scrollbar-gutter: stable" in dashboard_css
-    assert "overflow-y: scroll" in dashboard_css
-    assert "formatTimestamp(pricingSource.fetched_at)" in dashboard_js
     assert "pricingSnapshotWarning" in dashboard_js
     assert "formatTimestamp(nextPayload.refreshed_at)" in dashboard_js
-    assert "threadModelSummary" in dashboard_js
     assert "model-pill" in dashboard_surface
-    assert "Back to top" in dashboard
-    assert "updateToTopVisibility" in dashboard_js
     assert "Live refresh every" in dashboard_js
     assert "Refreshing local usage index" in dashboard_js
     assert "loadLimit" not in dashboard
-    assert "Run ai-usage-dashboard serve-dashboard to load every call in range." in dashboard_js
-    assert "pager" in dashboard
-    assert "pagerEl.hidden = !shouldShowPager" in dashboard_js
-    assert "updatePager(page, 'threads')" in dashboard_js
     assert "/api/usage" in dashboard_js
     assert "/api/usage-row" in dashboard_js
-    assert "detail-card primary" in dashboard_js
-    assert "Thread timeline" in dashboard_js
-    assert "Raw aggregate identifiers" in dashboard_js
-    assert "Loading additional aggregate fields..." in dashboard_js
-    assert "Codex credits" in dashboard_js
-    assert "Allowance impact" in dashboard_js
-    assert "Credit model" in dashboard_js
-    assert 'data-sort-key="time"' in dashboard
-    assert 'data-sort-key="thread"' in dashboard
-    assert '<option value="time" selected>Newest calls</option>' in dashboard
-    assert '<option value="attention" selected>Needs attention</option>' not in dashboard
-    assert "sortEl.value || 'time'" in dashboard_js
-    assert "sortKey = 'time';" in dashboard_js
-    assert "state.sort !== 'time'" in dashboard_state_js
-    assert '<option value="usage">Highest Codex credits</option>' in dashboard
+    assert "/api/context" in dashboard_js
 
     pricing_path.write_text(
         json.dumps(
@@ -809,7 +758,7 @@ def test_generate_dashboard_reuses_assets_when_asset_directory_is_locked(
     assert 'href="codex-usage-tracker-assets/dashboard.css?v=' in dashboard
 
 
-def test_dashboard_universal_summary_cards_contract(tmp_path: Path) -> None:
+def test_dashboard_answer_strip_contract(tmp_path: Path) -> None:
     codex_home = _make_codex_home(tmp_path)
     db_path = tmp_path / "usage.sqlite3"
     refresh_usage_index(codex_home=codex_home, db_path=db_path)
@@ -820,75 +769,63 @@ def test_dashboard_universal_summary_cards_contract(tmp_path: Path) -> None:
     asset_dir = tmp_path / "codex-usage-tracker-assets"
     dashboard_js = (asset_dir / "dashboard.js").read_text(encoding="utf-8")
 
-    # Universal labels render in the contract order inside the top-card block.
-    cards_block = dashboard.split('<div class="cards">', 1)[1].split('<section id="providerDetails"', 1)[0]
-    universal_labels = [
+    # The answer strip renders hero, spend chart, and limits cards in order.
+    strip = dashboard.split('<section class="answer-strip"', 1)[1].split("</section>", 1)[0]
+    assert strip.index('id="heroCost"') < strip.index('id="chartBars"') < strip.index('id="limitsGroups"')
+    assert ":: where did" in strip
+    assert ":: limits remaining" in strip
+    assert 'id="heroCostDelta"' in strip
+    assert 'id="heroTokensDelta"' in strip
+    assert 'id="heroCredits"' in strip
+    assert 'id="heroSentence"' in strip
+    assert "Codex" in strip
+    assert "Claude" in strip
+
+    # The retired summary-card / provider-details / analytics chrome is gone.
+    for stale in (
+        '<div class="cards">',
         "Visible Calls",
         "Total Tokens",
         "Input Tokens",
         "Cache Tokens",
         "Output Tokens",
         "Reasoning Tokens",
-        "Estimated Cost",
         "Usage Limits",
-    ]
-    positions = [cards_block.index(f"<span>{label}</span>") for label in universal_labels]
-    assert positions == sorted(positions)
-    assert len(positions) == 8
-
-    # Provider-specific top-card strings are gone from the card block and template.
-    for stale_label in (
-        "Codex Credits",
-        "Codex Remaining",
-        "Claude Remaining",
-        "Cache Read",
-        "Direct Input",
-        "Cached Input",
-        "Uncached Input",
-        "data-anthropic-label",
+        "providerDetails",
+        "usageAnalytics",
+        "insightsPanel",
     ):
-        assert stale_label not in cards_block
-    assert "data-anthropic-label" not in dashboard
-    assert "Codex Credits" not in dashboard
-    assert "Cached Input" not in dashboard
-    assert "Uncached Input" not in dashboard
+        assert stale not in dashboard
 
-    # The provider-specific details section exists below the cards.
-    assert '<section id="providerDetails"' in dashboard
-    assert "Provider Details" in dashboard
-    assert "providerDetailGroups" in dashboard
-
-    # Summary math and limits rendering are centralized and provider-neutral.
-    assert "buildUniversalSummary" in dashboard_js
-    assert "buildProviderDetails" in dashboard_js
-    assert "buildUsageLimits" in dashboard_js
-    assert "usageLimitsCardText" in dashboard_js
-    assert "limitSetupHints" in dashboard_js
-    assert "No snapshots" in dashboard_js
-    assert "no snapshot" in dashboard_js
-    assert "No data in range" in dashboard_js
-    assert "Cache read:" in dashboard_js
-    assert "Cache creation:" in dashboard_js
-
-    # Provider profiles no longer relabel the top cards.
-    for profile_key in (
-        "totalLabel",
-        "reasoningLabel",
-        "creditsLabel",
-        "creditsUnavailable",
-        "remainingLabel",
-        "remainingUnavailable",
+    # Hero math, chart bucketing, and limits rendering are centralized.
+    for symbol in (
+        "computeScope",
+        "buildThreads",
+        "buildChart",
+        "renderAnswerStrip",
+        "renderChart",
+        "renderLimits",
+        "deltaInfo",
+        "heroSentenceText",
+        "compactTokens",
     ):
-        assert profile_key not in dashboard_js
+        assert symbol in dashboard_js
+    assert "no prior-period data" in dashboard_js
+    assert "vs last period" in dashboard_js
+    assert "Codex credits used" in dashboard_js
+    # Chart data ignores the day filter itself so all bars stay comparable.
+    assert "Chart ignores the day filter" in dashboard_js
+    assert "click to filter" in dashboard_js
+    assert "click to clear" in dashboard_js
+    assert "--week-of" in dashboard_js
+    # Limit cards focus a provider and color by remaining percent.
+    assert "remaining_percent" in dashboard_js
+    assert "limitLevel" in dashboard_js
+    assert "click to focus" in dashboard_js
+    assert "click to show all providers" in dashboard_js
 
-    # Usage Limits is excluded from the count-up animation.
-    assert (
-        "COUNT_UP_IDS = ['visibleCalls', 'totalTokens', 'inputTokens', 'cacheTokens', "
-        "'outputTokens', 'reasoningTokens', 'estimatedCost']"
-    ) in dashboard_js
 
-
-def test_dashboard_usage_analytics_contract(tmp_path: Path) -> None:
+def test_dashboard_overview_and_calls_contract(tmp_path: Path) -> None:
     codex_home = _make_codex_home(tmp_path)
     db_path = tmp_path / "usage.sqlite3"
     refresh_usage_index(codex_home=codex_home, db_path=db_path)
@@ -898,83 +835,93 @@ def test_dashboard_usage_analytics_contract(tmp_path: Path) -> None:
     dashboard = dashboard_path.read_text(encoding="utf-8")
     asset_dir = tmp_path / "codex-usage-tracker-assets"
     dashboard_js = (asset_dir / "dashboard.js").read_text(encoding="utf-8")
-    dashboard_format_js = (asset_dir / "dashboard_format.js").read_text(encoding="utf-8")
+    dashboard_state_js = (asset_dir / "dashboard_state.js").read_text(encoding="utf-8")
     dashboard_css = (asset_dir / "dashboard.css").read_text(encoding="utf-8")
 
-    # The analytics section renders below the provider details strip.
-    assert dashboard.index('<section id="providerDetails"') < dashboard.index('<section id="usageAnalytics"')
-    assert "Usage Analytics" in dashboard
-    assert "usageTrend" in dashboard
-    assert "trendMetricTokens" in dashboard
-    assert "trendMetricCost" in dashboard
-    assert "Reasoning Effort" in dashboard
-    assert "Top Projects" in dashboard
-
-    # Every numeric universal card carries a prior-period delta slot; Usage Limits does not.
-    for delta_id in (
-        "visibleCallsDelta",
-        "totalTokensDelta",
-        "inputTokensDelta",
-        "cacheTokensDelta",
-        "outputTokensDelta",
-        "reasoningTokensDelta",
-        "estimatedCostDelta",
-    ):
-        assert delta_id in dashboard
-    assert "usageLimitsDelta" not in dashboard
-
-    # Chart, delta, and analytics builders are centralized in the dashboard script.
+    # Overview: ranked thread ledger with pagination and a drill-in rail.
+    assert dashboard.index('id="overviewSection"') < dashboard.index('id="callsSection"')
+    assert "LEDGER_PAGE_SIZE = 6" in dashboard_js
+    assert "CALLS_PAGE_SIZE = 8" in dashboard_js
+    assert "ranked by spend · click to drill in" in dashboard_js
+    assert "of spend" in dashboard_js
     for symbol in (
-        "previousPeriodRange",
-        "deltaDisplay",
-        "updateCardDeltas",
-        "buildUsageTrend",
-        "renderUsageTrend",
-        "buildEffortBreakdown",
-        "buildProjectLeaderboard",
-        "renderUsageAnalytics",
+        "threadSignal",
+        "renderLedger",
+        "renderOverviewRail",
+        "renderAttentionRail",
+        "renderThreadRail",
+        "buildAttention",
     ):
         assert symbol in dashboard_js
-    assert "vs prior" in dashboard_js
-    # Live refresh fetches the prior period too, so deltas have data to compare.
-    assert "previousPeriodRange(range)" in dashboard_js
-    assert "dailyTrendPresets" in dashboard_js
-    assert "['this-week', 'last-7-days']" in dashboard_js
-    assert "dailyTrendPresets.has(preset)" in dashboard_js
-    # Hovering or focusing a chart bar shows a custom tooltip; no native <title> delay.
-    assert "trendTooltip" in dashboard
-    assert "showTrendTooltip" in dashboard_js
-    assert "data-tooltip" in dashboard_js
-    assert "<title>" not in dashboard_js
-    assert ".trend-tooltip" in dashboard_css
-    # Each stacked segment carries its own provider tooltip; hovering a color
-    # shows that provider's share, not the whole-bar breakdown.
-    assert "segmentTooltip" in dashboard_js
-    assert "closest('[data-tooltip]')" in dashboard_js
-    # Limit history feeds burn-down sparklines, pace forecasts, and window attribution.
-    assert "Limits Burn-down" in dashboard
-    assert "limitBurndown" in dashboard
-    assert "provider_limit_history" in dashboard
-    for symbol in (
-        "limitHistorySeries",
-        "currentWindowSegment",
-        "limitForecast",
-        "limitForecastText",
-        "windowAttributionText",
-        "renderLimitBurndown",
-        "burndownSparkline",
+    assert "low cache" in dashboard_js
+    assert "est. price" in dashboard_js
+    # Attention rail: max three cards in priority order, with a quiet empty state.
+    assert "Context bloat" in dashboard_js
+    assert "Low cache reuse" in dashboard_js
+    assert "Unpriced usage" in dashboard_js
+    assert "Estimated pricing" in dashboard_js
+    assert "nothing needs attention in this range" in dashboard_js
+    # Drill-in: context sparkline, spawned work, timeline, next action.
+    assert "context growth · session cumulative" in dashboard_js
+    assert "spawned work" in dashboard_js
+    assert "timeline · oldest → newest" in dashboard_js
+    assert "next action" in dashboard_js
+    assert "open in calls view" in dashboard_js
+    assert "cumulative_total_tokens" in dashboard_js
+
+    # Calls view: sortable dense table plus call-details rail.
+    assert "sortDirection" in dashboard_js
+    assert "renderCallsTable" in dashboard_js
+    assert "renderCallRail" in dashboard_js
+    assert "sorted by" in dashboard_js
+    assert "cost, usage, and context" in dashboard_js
+    assert "thread narrative" in dashboard_js
+    assert "token and pricing breakdown" in dashboard_js
+    assert "raw identifiers &amp; source" in dashboard_js
+    assert "open thread in overview" in dashboard_js
+    # Cache sorts ascending by default (worst first); the rest descending.
+    assert "state.sortKey === 'cache' ? 'asc' : 'desc'" in dashboard_js
+    # Compact live rows hydrate on demand through the aggregate row API.
+    assert "rowNeedsDetail" in dashboard_js
+    assert "ensureRowDetail" in dashboard_js
+    assert "loading on demand" in dashboard_js
+    # Prompt context loads on demand only and is never persisted.
+    assert "loadContext" in dashboard_js
+    assert "renderContext" in dashboard_js
+    assert "Not persisted to SQLite or dashboard HTML." in dashboard_js
+
+    # Layout: the page never scrolls at desktop heights; lists scroll internally.
+    assert "height: 100vh" in dashboard_css
+    assert "min-height: 640px" in dashboard_css
+    assert "max-width: 1360px" in dashboard_css
+    assert "grid-template-columns: minmax(0, 1.5fr) minmax(340px, 0.8fr)" in dashboard_css
+    assert "grid-template-columns: 34px minmax(0, 1fr) 90px 90px 96px" in dashboard_css
+    assert "grid-template-columns: 92px minmax(0, 1.4fr) minmax(0, 1fr) 64px 74px 82px 60px 90px" in dashboard_css
+    assert "min-width: 760px" in dashboard_css
+    assert ".popover-anchor" in dashboard_css
+    assert "min-width: 520px" in dashboard_css
+
+    # URL state round-trips the new state model.
+    for key in (
+        "'view'",
+        "'q'",
+        "'date'",
+        "'from'",
+        "'to'",
+        "'provider'",
+        "'model'",
+        "'effort'",
+        "'confidence'",
+        "'thread_type'",
+        "'day'",
+        "'sort'",
+        "'direction'",
+        "'page'",
+        "'lpage'",
+        "'thread'",
+        "'record'",
     ):
-        assert symbol in dashboard_js
-    assert "window drivers" in dashboard_js
-    assert "to exhaustion at current pace" in dashboard_js
-    assert "pricingSource.sources" in dashboard_js
-    assert "Fetched from sources:" in dashboard_js
-    assert ".burn-spark" in dashboard_css
-    assert "notation: 'compact'" in dashboard_format_js
-    # The SVG chart is hand-rolled; styling stays offline-safe.
-    assert ".usage-trend" in dashboard_css
-    assert ".analytics-columns" in dashboard_css
-    assert ".card-delta" in dashboard_css
+        assert key in dashboard_state_js
     assert "url(" not in dashboard_css
     assert "http" not in dashboard_css
 
@@ -1887,20 +1834,18 @@ def test_dashboard_defaults_to_this_week_without_load_cap_control(tmp_path: Path
         tmp_path / "codex-usage-tracker-assets" / "dashboard_state.js"
     ).read_text(encoding="utf-8")
 
-    assert '<option value="this-week" selected>This week</option>' in dashboard
-    assert '<option value="all" selected>All time</option>' not in dashboard
+    assert 'data-range="this-week"' in dashboard
+    assert "range: RANGES.has(initialState.range) ? initialState.range : 'this-week'" in dashboard_js
+    assert "range: ALLOWED_RANGES.has(range) ? range : 'this-week'" in dashboard_state_js
     assert 'id="loadLimit"' not in dashboard
     assert "updateLoadLimitControl" not in dashboard_js
     assert "limit: 'all'" in dashboard_js
     assert "params.set('since'" in dashboard_js
     assert "params.set('until'" in dashboard_js
-    assert '<option value="active" selected>Active sessions only</option>' not in dashboard
-    assert '<option value="all" selected>All history</option>' in dashboard
+    # History scope has no UI control; the payload defaults to all history.
+    assert "historyScope" not in dashboard
     assert '"include_archived": true' in dashboard
-    assert "params.get('history') === 'active'" in dashboard_state_js
-    assert "state.historyScope === 'active'" in dashboard_state_js
-    assert "params.get('thread_type') === 'parents'" in dashboard_state_js
-    assert "state.threadScope === 'spawned'" in dashboard_state_js
+    assert "include_archived: includeArchived ? '1' : '0'" in dashboard_js
 
 
 def _synthetic_usage_event(record_id: str, event_timestamp: str) -> UsageEvent:
