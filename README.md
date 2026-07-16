@@ -142,9 +142,9 @@ The tracker does not call a remote account API or infer your logged-in ChatGPT p
 
 - Local SQLite index at `~/.codex-usage-tracker/usage.sqlite3`.
 - Static dashboard generation plus localhost live refresh.
-- `Insights`, `Calls`, and `Threads` dashboard views.
+- Answer-first weekly report layout with an answer strip, spend overview, `:: needs attention` cards, and `threads` / `calls` drill-down views.
 - Source-aware provider/app filters for Codex, Claude Code, and Hermes rows.
-- All-history dashboards by default, with an explicit `Active sessions only` toggle for hiding archived sessions.
+- All-history dashboards by default, with an `--active-only` flag for hiding archived sessions.
 - CLI summaries, queries, CSV export, dashboard generation, doctor checks, and support bundles.
 - MCP tools for Codex sessions that want to query local usage data.
 - Companion Codex skills for operational setup and conversational usage analysis.

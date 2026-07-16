@@ -747,9 +747,13 @@
       </div>
     `;
   }
+  function flaggedAction(row) {
+    const recs = row && row.action_recommendations;
+    return Array.isArray(recs) && recs.length && recs[0] && recs[0].action ? recs[0].action : '';
+  }
   function threadNextAction(thread, chrono) {
-    const last = chrono[chrono.length - 1];
-    if (last && last.recommended_action) return last.recommended_action;
+    const flagged = flaggedAction(chrono[chrono.length - 1]);
+    if (flagged) return flagged;
     if (thread.maxContext >= 0.6) return 'Prefer a new thread for unrelated follow-up work — context is heavy.';
     if (thread.cacheRatio < 0.3) return 'Compare fresh input with the previous turn before continuing.';
     return 'No action needed. Expand calls only if a signal is unclear.';
@@ -948,7 +952,8 @@
     `;
   }
   function callNextAction(row) {
-    if (row.recommended_action) return row.recommended_action;
+    const flagged = flaggedAction(row);
+    if (flagged) return flagged;
     if (!row.pricing_model) return 'Configure pricing before trusting cost totals.';
     const cacheRatio = Number(row.cache_ratio) || 0;
     const context = Number(row.context_window_percent) || 0;
