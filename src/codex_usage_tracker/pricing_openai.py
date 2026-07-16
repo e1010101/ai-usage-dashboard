@@ -28,7 +28,7 @@ from codex_usage_tracker.pricing_deepseek import (
     DEEPSEEK_PRICING_URL,
     parse_deepseek_pricing_html,
 )
-from codex_usage_tracker.pricing_estimates import ESTIMATED_MODEL_PRICES, estimated_model_prices
+from codex_usage_tracker.pricing_estimates import estimated_model_prices
 
 OPENAI_PRICING_MD_URL = "https://developers.openai.com/api/docs/pricing.md"
 VALID_PRICING_TIERS = ("standard", "batch", "flex", "priority")
@@ -132,8 +132,15 @@ def update_pricing_from_openai_docs(
         )
     estimated_model_count = 0
     if include_estimates:
-        models.update(estimated_model_prices())
-        estimated_model_count = len(ESTIMATED_MODEL_PRICES)
+        # Estimates only fill gaps: a source-published row always wins over an
+        # internal best-guess entry, so stale estimates cannot mask real prices.
+        estimates = {
+            model: rates
+            for model, rates in estimated_model_prices().items()
+            if model not in models
+        }
+        models.update(estimates)
+        estimated_model_count = len(estimates)
 
     fetched_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     source: dict[str, Any] = {
@@ -199,10 +206,18 @@ def parse_openai_pricing_markdown(
     models: dict[str, dict[str, float]] = {}
     for match in _OPENAI_PRICE_ROW_RE.finditer(rows_block):
         model = _normalize_model_name(match.group("model"))
-        input_rate = _parse_openai_price_value(match.group("input"))
-        cached_rate = _parse_openai_price_value(match.group("cached"))
-        output_rate = _parse_openai_price_value(match.group("output"))
-        if not model or input_rate is None or output_rate is None:
+        # Row shapes vary: [input, cached, output] or, since the cache-write
+        # column landed, [input, cached, cache_write, output]. Input is always
+        # first, cached input second, and output last.
+        values = [
+            _parse_openai_price_value(cell) for cell in match.group("values").split(",")
+        ]
+        if not model or len(values) < 2:
+            continue
+        input_rate = values[0]
+        cached_rate = values[1] if len(values) >= 3 else None
+        output_rate = values[-1]
+        if input_rate is None or output_rate is None:
             continue
         if cached_rate is None:
             cached_rate = input_rate
@@ -222,9 +237,7 @@ def parse_openai_pricing_markdown(
 _OPENAI_PRICE_ROW_RE = re.compile(
     r"""\[
         \s*"(?P<model>[^"]+)"\s*,
-        \s*(?P<input>[^,\]\n]+)\s*,
-        \s*(?P<cached>[^,\]\n]+)\s*,
-        \s*(?P<output>[^,\]\n]+)\s*
+        (?P<values>[^\]]+)
     \]""",
     re.VERBOSE,
 )
