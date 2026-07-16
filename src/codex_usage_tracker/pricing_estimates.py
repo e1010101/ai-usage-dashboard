@@ -4,6 +4,7 @@ from __future__ import annotations
 
 OPENAI_CODEX_LAUNCH_URL = "https://openai.com/index/introducing-codex/"
 OPENAI_GPT_53_CODEX_MODEL_URL = "https://developers.openai.com/api/docs/models/gpt-5.3-codex"
+OPENAI_GPT_55_MODEL_URL = "https://developers.openai.com/api/docs/models/gpt-5.5"
 OPENAI_CODEX_RATE_CARD_URL = "https://help.openai.com/en/articles/20001106-codex-rate-card"
 
 PricingEstimateValue = float | bool | str
@@ -33,6 +34,20 @@ ESTIMATED_MODEL_PRICES: dict[str, dict[str, PricingEstimateValue]] = {
             "GPT-5.3-Codex-Spark is listed by OpenAI as a research preview "
             "without final Codex credit rates; estimate uses the published "
             "GPT-5.3-Codex text-token rates until Spark rates are finalized."
+        ),
+    },
+    "gpt-5.6-sol": {
+        "input_per_million": 5.0,
+        "cached_input_per_million": 0.5,
+        "output_per_million": 30.0,
+        "estimated": True,
+        "estimate_basis_model": "gpt-5.5",
+        "estimate_source_url": OPENAI_GPT_55_MODEL_URL,
+        "estimate_reference_url": OPENAI_CODEX_RATE_CARD_URL,
+        "estimate_reason": (
+            "gpt-5.6-sol is an internal Codex model label without a public "
+            "pricing row; estimate uses the published gpt-5.5 text-token "
+            "rates until gpt-5.6 pricing is published."
         ),
     },
 }

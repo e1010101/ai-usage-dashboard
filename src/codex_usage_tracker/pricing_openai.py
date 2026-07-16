@@ -15,6 +15,12 @@ from urllib.request import Request, urlopen
 
 from codex_usage_tracker import __version__
 from codex_usage_tracker.paths import DEFAULT_PRICING_PATH
+from codex_usage_tracker.pricing_anthropic import (
+    ANTHROPIC_COMPATIBILITY_ALIASES,
+    ANTHROPIC_PRICING_SOURCE_NAME,
+    ANTHROPIC_PRICING_URL,
+    parse_anthropic_pricing_markdown,
+)
 from codex_usage_tracker.pricing_config import PRICING_SCHEMA, load_existing_aliases
 from codex_usage_tracker.pricing_deepseek import (
     DEEPSEEK_COMPATIBILITY_ALIASES,
@@ -43,6 +49,7 @@ class PricingUpdateResult:
     model_count: int
     estimated_model_count: int = 0
     deepseek_model_count: int = 0
+    anthropic_model_count: int = 0
     alias_count: int = 0
     source_urls: tuple[str, ...] = ()
     backup_path: Path | None = None
@@ -58,6 +65,9 @@ def update_pricing_from_openai_docs(
     include_deepseek: bool = False,
     deepseek_source_url: str = DEEPSEEK_PRICING_URL,
     fetch_deepseek_text: Callable[[str], str] | None = None,
+    include_anthropic: bool = False,
+    anthropic_source_url: str = ANTHROPIC_PRICING_URL,
+    fetch_anthropic_text: Callable[[str], str] | None = None,
 ) -> PricingUpdateResult:
     """Fetch source-published pricing rows and cache them in the local config."""
 
@@ -102,6 +112,24 @@ def update_pricing_from_openai_docs(
                 "alias_count": len(DEEPSEEK_COMPATIBILITY_ALIASES),
             }
         )
+    anthropic_model_count = 0
+    if include_anthropic:
+        anthropic_fetcher = fetch_anthropic_text or fetcher
+        anthropic_models = parse_anthropic_pricing_markdown(
+            anthropic_fetcher(anthropic_source_url)
+        )
+        models.update({model: dict(rates) for model, rates in anthropic_models.items()})
+        aliases = {**ANTHROPIC_COMPATIBILITY_ALIASES, **aliases}
+        anthropic_model_count = len(anthropic_models)
+        source_urls.append(anthropic_source_url)
+        source_entries.append(
+            {
+                "name": ANTHROPIC_PRICING_SOURCE_NAME,
+                "url": anthropic_source_url,
+                "model_count": anthropic_model_count,
+                "alias_count": len(ANTHROPIC_COMPATIBILITY_ALIASES),
+            }
+        )
     estimated_model_count = 0
     if include_estimates:
         models.update(estimated_model_prices())
@@ -109,10 +137,8 @@ def update_pricing_from_openai_docs(
 
     fetched_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     source: dict[str, Any] = {
-        "name": (
-            "OpenAI and DeepSeek pricing docs"
-            if include_deepseek
-            else "OpenAI Developers pricing docs"
+        "name": _source_display_name(
+            include_deepseek=include_deepseek, include_anthropic=include_anthropic
         ),
         "url": source_url,
         "tier": tier,
@@ -121,7 +147,7 @@ def update_pricing_from_openai_docs(
         "official_model_count": len(models) - estimated_model_count,
         "estimated_model_count": estimated_model_count,
     }
-    if include_deepseek:
+    if len(source_entries) > 1:
         source["sources"] = source_entries
     payload = {
         "_schema": PRICING_SCHEMA,
@@ -143,10 +169,21 @@ def update_pricing_from_openai_docs(
         model_count=len(models),
         estimated_model_count=estimated_model_count,
         deepseek_model_count=deepseek_model_count,
+        anthropic_model_count=anthropic_model_count,
         alias_count=len(aliases),
         source_urls=tuple(source_urls),
         backup_path=backup_path,
     )
+
+
+def _source_display_name(*, include_deepseek: bool, include_anthropic: bool) -> str:
+    if include_deepseek and include_anthropic:
+        return "OpenAI, DeepSeek, and Anthropic pricing docs"
+    if include_deepseek:
+        return "OpenAI and DeepSeek pricing docs"
+    if include_anthropic:
+        return "OpenAI and Anthropic pricing docs"
+    return "OpenAI Developers pricing docs"
 
 
 def parse_openai_pricing_markdown(

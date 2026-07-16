@@ -5,11 +5,14 @@ from pathlib import Path
 
 from codex_usage_tracker import pricing as pricing_module
 from codex_usage_tracker.pricing import (
+    ANTHROPIC_PRICING_URL,
     ESTIMATED_MODEL_PRICES,
     OPENAI_PRICING_MD_URL,
     PRICING_SCHEMA,
+    AnthropicPricingParseError,
     PricingParseError,
     load_pricing_config,
+    parse_anthropic_pricing_markdown,
     parse_openai_pricing_markdown,
     summarize_pricing_coverage,
     update_pricing_from_openai_docs,
@@ -58,6 +61,30 @@ DEEPSEEK_PRICING_FIXTURE = """
     <td>$0.87</td>
   </tr>
 </table>
+"""
+
+
+ANTHROPIC_PRICING_FIXTURE = """
+## Model pricing
+
+The following table shows pricing for all Claude models:
+
+| Model                                                                                                         | Base Input Tokens | 5m Cache Writes | 1h Cache Writes | Cache Hits & Refreshes | Output Tokens |
+| ------------------------------------------------------------------------------------------------------------- | ----------------- | --------------- | --------------- | ---------------------- | ------------- |
+| Claude Fable 5                                                                                                | $10 / MTok        | $12.50 / MTok   | $20 / MTok      | $1 / MTok              | $50 / MTok    |
+| Claude Mythos 5 ([limited availability](https://anthropic.com/glasswing))                                     | $10 / MTok        | $12.50 / MTok   | $20 / MTok      | $1 / MTok              | $50 / MTok    |
+| Claude Opus 4.8                                                                                               | $5 / MTok         | $6.25 / MTok    | $10 / MTok      | $0.50 / MTok           | $25 / MTok    |
+| Claude Opus 4.1 ([deprecated](/docs/en/about-claude/model-deprecations))                                      | $15 / MTok        | $18.75 / MTok   | $30 / MTok      | $1.50 / MTok           | $75 / MTok    |
+| Claude Sonnet 5 [through August 31, 2026](/docs/en/about-claude/pricing#claude-sonnet-5-introductory-pricing) | $2 / MTok         | $2.50 / MTok    | $4 / MTok       | $0.20 / MTok           | $10 / MTok    |
+| Claude Sonnet 5 starting September 1, 2026                                                                    | $3 / MTok         | $3.75 / MTok    | $6 / MTok       | $0.30 / MTok           | $15 / MTok    |
+| Claude Sonnet 4.5                                                                                             | $3 / MTok         | $3.75 / MTok    | $6 / MTok       | $0.30 / MTok           | $15 / MTok    |
+| Claude Haiku 4.5                                                                                              | $1 / MTok         | $1.25 / MTok    | $2 / MTok       | $0.10 / MTok           | $5 / MTok     |
+
+## Feature-specific pricing
+
+| Cache operation      | Multiplier             | Duration                  |
+| -------------------- | ---------------------- | ------------------------- |
+| 5-minute cache write | 1.25x base input price | Cache valid for 5 minutes |
 """
 
 
@@ -123,6 +150,46 @@ def test_parse_deepseek_pricing_html() -> None:
     }
 
 
+def test_parse_anthropic_pricing_markdown() -> None:
+    models = parse_anthropic_pricing_markdown(ANTHROPIC_PRICING_FIXTURE)
+
+    assert models["claude-fable-5"] == {
+        "input_per_million": 10.0,
+        "cached_input_per_million": 1.0,
+        "output_per_million": 50.0,
+    }
+    assert models["claude-opus-4-8"] == {
+        "input_per_million": 5.0,
+        "cached_input_per_million": 0.5,
+        "output_per_million": 25.0,
+    }
+    assert models["claude-haiku-4-5"]["cached_input_per_million"] == 0.1
+    # Qualifier links and parentheticals are stripped from display names.
+    assert models["claude-mythos-5"]["input_per_million"] == 10.0
+    assert models["claude-opus-4-1"]["output_per_million"] == 75.0
+    # Duplicate Sonnet 5 rows keep the first (currently effective) price.
+    assert models["claude-sonnet-5"]["input_per_million"] == 2.0
+    assert "claude-sonnet-5-starting-september-1,-2026" not in models
+
+
+def test_parse_anthropic_pricing_markdown_reports_schema_changes() -> None:
+    missing_header = ANTHROPIC_PRICING_FIXTURE.replace("Base Input Tokens", "Input Rates")
+    missing_cached = ANTHROPIC_PRICING_FIXTURE.replace("Cache Hits & Refreshes", "Cache Reads")
+    unparseable_price = ANTHROPIC_PRICING_FIXTURE.replace("$10 / MTok", "contact sales", 1)
+
+    for source, expected in [
+        (missing_header, "model pricing table header"),
+        (missing_cached, "cache hits column"),
+        (unparseable_price, "could not parse Anthropic price"),
+    ]:
+        try:
+            parse_anthropic_pricing_markdown(source)
+        except AnthropicPricingParseError as exc:
+            assert expected in str(exc)
+        else:
+            raise AssertionError("expected AnthropicPricingParseError")
+
+
 def test_update_pricing_from_openai_docs_writes_source_metadata(tmp_path: Path) -> None:
     pricing_path = tmp_path / "pricing.json"
 
@@ -133,15 +200,16 @@ def test_update_pricing_from_openai_docs_writes_source_metadata(tmp_path: Path) 
     raw = json.loads(pricing_path.read_text(encoding="utf-8"))
     config = load_pricing_config(pricing_path)
 
-    assert result.model_count == 5
-    assert result.estimated_model_count == 2
+    assert result.model_count == 6
+    assert result.estimated_model_count == 3
     assert result.source_url == OPENAI_PRICING_MD_URL
     assert raw["_schema"] == PRICING_SCHEMA
     assert raw["_source"]["url"] == OPENAI_PRICING_MD_URL
     assert raw["_source"]["tier"] == "standard"
-    assert raw["_source"]["estimated_model_count"] == 2
+    assert raw["_source"]["estimated_model_count"] == 3
     assert raw["models"]["codex-auto-review"] == ESTIMATED_MODEL_PRICES["codex-auto-review"]
     assert raw["models"]["gpt-5.3-codex-spark"] == ESTIMATED_MODEL_PRICES["gpt-5.3-codex-spark"]
+    assert raw["models"]["gpt-5.6-sol"] == ESTIMATED_MODEL_PRICES["gpt-5.6-sol"]
     assert config.loaded
     assert config.source and config.source["name"] == "OpenAI Developers pricing docs"
     assert config.models["gpt-5.5"]["output_per_million"] == 30
@@ -149,6 +217,8 @@ def test_update_pricing_from_openai_docs_writes_source_metadata(tmp_path: Path) 
     assert config.is_estimated_model("codex-auto-review")
     assert config.models["gpt-5.3-codex-spark"]["input_per_million"] == 1.75
     assert config.is_estimated_model("gpt-5.3-codex-spark")
+    assert config.models["gpt-5.6-sol"]["input_per_million"] == 5.0
+    assert config.is_estimated_model("gpt-5.6-sol")
 
 
 def test_update_pricing_from_openai_docs_can_include_deepseek_docs(tmp_path: Path) -> None:
@@ -177,7 +247,7 @@ def test_update_pricing_from_openai_docs_can_include_deepseek_docs(tmp_path: Pat
         pricing=config,
     )
 
-    assert result.model_count == 7
+    assert result.model_count == 8
     assert result.deepseek_model_count == 2
     assert result.source_urls == (OPENAI_PRICING_MD_URL, pricing_module.DEEPSEEK_PRICING_URL)
     assert raw["_source"]["sources"][1]["name"] == "DeepSeek API pricing docs"
@@ -204,6 +274,49 @@ def test_update_pricing_from_openai_docs_can_skip_estimates(tmp_path: Path) -> N
     assert result.estimated_model_count == 0
     assert "codex-auto-review" not in raw["models"]
     assert "gpt-5.3-codex-spark" not in raw["models"]
+    assert "gpt-5.6-sol" not in raw["models"]
+
+
+def test_update_pricing_from_openai_docs_can_include_anthropic_docs(tmp_path: Path) -> None:
+    pricing_path = tmp_path / "pricing.json"
+
+    result = update_pricing_from_openai_docs(
+        pricing_path,
+        fetch_text=lambda url: OPENAI_PRICING_FIXTURE
+        if url == OPENAI_PRICING_MD_URL
+        else ANTHROPIC_PRICING_FIXTURE,
+        include_anthropic=True,
+    )
+    raw = json.loads(pricing_path.read_text(encoding="utf-8"))
+    config = load_pricing_config(pricing_path)
+    coverage = summarize_pricing_coverage(
+        [
+            {
+                "group_key": "claude-sonnet-4-5-20250929",
+                "total_tokens": 2_000_000,
+                "input_tokens": 1_000_000,
+                "cached_input_tokens": 250_000,
+                "uncached_input_tokens": 750_000,
+                "output_tokens": 1_000_000,
+            }
+        ],
+        pricing=config,
+    )
+
+    assert result.anthropic_model_count == 7
+    assert result.model_count == 13
+    assert result.source_urls == (OPENAI_PRICING_MD_URL, ANTHROPIC_PRICING_URL)
+    assert raw["_source"]["name"] == "OpenAI and Anthropic pricing docs"
+    assert raw["_source"]["sources"][1]["name"] == "Anthropic pricing docs"
+    assert raw["aliases"]["claude-sonnet-4-5-20250929"] == "claude-sonnet-4-5"
+    assert raw["aliases"]["claude-haiku-4-5-20251001"] == "claude-haiku-4-5"
+    assert config.priced_as("claude-sonnet-4-5-20250929") == "claude-sonnet-4-5"
+    assert config.models["claude-fable-5"]["output_per_million"] == 50.0
+    assert not config.is_estimated_model("claude-fable-5")
+    assert coverage["priced_model_count"] == 1
+    assert coverage["rows"][0]["priced_as"] == "claude-sonnet-4-5"
+    # 750k uncached × $3 + 250k cached × $0.30 + 1M output × $15 = $17.325
+    assert coverage["estimated_cost_usd"] == 17.325
 
 
 def test_pricing_coverage_marks_internal_estimates(tmp_path: Path) -> None:

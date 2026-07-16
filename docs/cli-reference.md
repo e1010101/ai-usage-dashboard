@@ -138,7 +138,7 @@ ai-usage-dashboard init-projects
 
 Local config files live under `~/.codex-usage-tracker/` and are never committed by this project.
 
-`update-pricing` refreshes OpenAI-published text-token pricing by default. Add `--include-deepseek` to include DeepSeek API pricing and compatibility aliases in the same local cache. Configure other non-OpenAI model prices manually in `~/.codex-usage-tracker/pricing.json` when you want USD estimates for rows whose provider is not covered by the updater.
+`update-pricing` refreshes OpenAI-published text-token pricing by default. Add `--include-anthropic` to include Anthropic (Claude) pricing and dated-model aliases, and `--include-deepseek` to include DeepSeek API pricing and compatibility aliases in the same local cache. Configure other non-OpenAI model prices manually in `~/.codex-usage-tracker/pricing.json` when you want USD estimates for rows whose provider is not covered by the updater.
 
 `install-claude-limits-statusline` updates `~/.claude/settings.json` so Claude Code calls the tracker from its `statusLine` command. If you already have a status line, the installer wraps and preserves that command and writes a backup of the settings file before changing it.
 

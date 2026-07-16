@@ -24,9 +24,17 @@ ai-usage-dashboard update-pricing --include-deepseek
 
 With `--include-deepseek`, the updater fetches DeepSeek's published pricing page, caches `deepseek-v4-flash` and `deepseek-v4-pro`, and adds official compatibility aliases for `deepseek-chat` and `deepseek-reasoner`. Codex credits still apply only to Codex/OpenAI rows; DeepSeek rows are marked not applicable for credit confidence.
 
+Add Anthropic (Claude) pricing to the same cache:
+
+```bash
+ai-usage-dashboard update-pricing --include-anthropic
+```
+
+With `--include-anthropic`, the updater fetches Anthropic's published pricing docs from `https://platform.claude.com/docs/en/about-claude/pricing.md` and caches every Claude model row (base input, prompt-cache read, and output rates — cache reads map to `cached_input_per_million`). It also adds compatibility aliases so dated transcript model ids such as `claude-sonnet-4-5-20250929` and `claude-haiku-4-5-20251001` resolve to their pricing rows. Without this flag, Claude Code rows have no USD estimates and the spend chart under-reports Anthropic usage. When Anthropic publishes both introductory and standard prices for the same model, the first (currently effective) row wins. Claude rows are marked not applicable for Codex credit confidence.
+
 If a pricing file already exists, the updater leaves a timestamped `.bak` copy next to it before replacing the active cache.
 
-The updater also includes marked best-guess estimates for Codex labels that are not finalized in the public pricing table. `codex-auto-review` uses OpenAI's published `codex-mini-latest` Codex pricing from `https://openai.com/index/introducing-codex/`: `$1.50` per 1M input tokens, a 75% prompt-cache discount (`$0.375` per 1M cached input tokens), and `$6.00` per 1M output tokens. `gpt-5.3-codex-spark` is listed by OpenAI as a research preview with non-final Codex rates, so the tracker estimates it as `gpt-5.3-codex` at `$1.75` per 1M input tokens, `$0.175` per 1M cached input tokens, and `$14.00` per 1M output tokens.
+The updater also includes marked best-guess estimates for Codex labels that are not finalized in the public pricing table. `codex-auto-review` uses OpenAI's published `codex-mini-latest` Codex pricing from `https://openai.com/index/introducing-codex/`: `$1.50` per 1M input tokens, a 75% prompt-cache discount (`$0.375` per 1M cached input tokens), and `$6.00` per 1M output tokens. `gpt-5.3-codex-spark` is listed by OpenAI as a research preview with non-final Codex rates, so the tracker estimates it as `gpt-5.3-codex` at `$1.75` per 1M input tokens, `$0.175` per 1M cached input tokens, and `$14.00` per 1M output tokens. `gpt-5.6-sol` is an internal Codex model label with no public pricing row, so the tracker estimates it at the published `gpt-5.5` rates (`$5.00` input, `$0.50` cached input, `$30.00` output per 1M tokens) until gpt-5.6 pricing is published.
 
 Use `--no-estimates` when you want only pricing rows parsed from the source pricing tables.
 
@@ -110,5 +118,6 @@ If Claude Code does not include `rate_limits` yet, the wrapper exits successfull
 - The dashboard does not infer live remaining allowance from the logged-in account plan or contact a remote usage API.
 - Pricing can change after a report is generated. Use `pin-pricing` when you need reproducible historical cost estimates.
 - `update-pricing --include-deepseek` adds DeepSeek model costs only; source ingestion still comes from local adapters such as Hermes.
+- `update-pricing --include-anthropic` adds Claude model costs only; Claude Code usage rows still come from the Claude adapter.
 - Rows with direct model/rate-card matches are more trustworthy than inferred aliases or local overrides.
 - Cost and credit calculations use aggregate counters; the tracker does not re-tokenize prompts or reconstruct usage from raw text.
