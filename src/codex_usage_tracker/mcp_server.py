@@ -375,6 +375,7 @@ def update_usage_pricing_config(
     tier: str = "standard",
     include_estimates: bool = True,
     include_deepseek: bool = False,
+    include_anthropic: bool = False,
 ) -> dict[str, Any]:
     """Fetch source-published text-token pricing into the local pricing config."""
 
@@ -383,6 +384,7 @@ def update_usage_pricing_config(
         tier=tier,
         include_estimates=include_estimates,
         include_deepseek=include_deepseek,
+        include_anthropic=include_anthropic,
     )
     return {
         "schema": "codex-usage-tracker-update-pricing-v1",
@@ -393,6 +395,7 @@ def update_usage_pricing_config(
         "model_count": result.model_count,
         "estimated_model_count": result.estimated_model_count,
         "deepseek_model_count": result.deepseek_model_count,
+        "anthropic_model_count": result.anthropic_model_count,
         "alias_count": result.alias_count,
         "source_urls": list(result.source_urls),
         "backup_path": str(result.backup_path) if result.backup_path else None,

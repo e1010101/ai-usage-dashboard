@@ -2123,16 +2123,18 @@ def _fake_pricing_update(
     tier: str = "standard",
     include_estimates: bool = True,
     include_deepseek: bool = False,
+    include_anthropic: bool = False,
 ) -> PricingUpdateResult:
     return PricingUpdateResult(
         path=path,
         source_url="https://example.test/pricing.md",
         tier=tier,
         fetched_at="2026-05-17T00:00:00+00:00",
-        model_count=1 + int(include_deepseek),
+        model_count=1 + int(include_deepseek) + int(include_anthropic),
         estimated_model_count=1 if include_estimates else 0,
         deepseek_model_count=1 if include_deepseek else 0,
-        alias_count=2 if include_deepseek else 0,
+        anthropic_model_count=1 if include_anthropic else 0,
+        alias_count=(2 if include_deepseek else 0) + (2 if include_anthropic else 0),
         source_urls=(
             "https://example.test/pricing.md",
             "https://example.test/deepseek-pricing",

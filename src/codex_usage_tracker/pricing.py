@@ -9,6 +9,13 @@ from codex_usage_tracker.costing import (
     estimate_cost_usd,
     summarize_pricing_coverage,
 )
+from codex_usage_tracker.pricing_anthropic import (
+    ANTHROPIC_COMPATIBILITY_ALIASES,
+    ANTHROPIC_PRICING_SOURCE_NAME,
+    ANTHROPIC_PRICING_URL,
+    AnthropicPricingParseError,
+    parse_anthropic_pricing_markdown,
+)
 from codex_usage_tracker.pricing_config import (
     PRICING_SCHEMA,
     PRICING_TEMPLATE,
@@ -40,6 +47,10 @@ from codex_usage_tracker.pricing_openai import (
 )
 
 __all__ = [
+    "ANTHROPIC_COMPATIBILITY_ALIASES",
+    "ANTHROPIC_PRICING_SOURCE_NAME",
+    "ANTHROPIC_PRICING_URL",
+    "AnthropicPricingParseError",
     "ESTIMATED_MODEL_PRICES",
     "DEEPSEEK_COMPATIBILITY_ALIASES",
     "DEEPSEEK_PRICING_SOURCE_NAME",
@@ -60,6 +71,7 @@ __all__ = [
     "estimate_cache_savings_usd",
     "estimate_cost_usd",
     "load_pricing_config",
+    "parse_anthropic_pricing_markdown",
     "parse_deepseek_pricing_html",
     "parse_openai_pricing_markdown",
     "pin_pricing_snapshot",

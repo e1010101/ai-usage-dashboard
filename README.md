@@ -117,7 +117,7 @@ ai-usage-dashboard refresh --source all
 ai-usage-dashboard serve-dashboard --source all --open
 ```
 
-Add `--include-deepseek` to `update-pricing` when you want DeepSeek API model prices and compatibility aliases in the same local pricing cache.
+Add `--include-anthropic` to `update-pricing` to cache Anthropic (Claude) model prices and dated-model aliases — recommended when the dashboard tracks Claude Code usage, since Claude rows have no USD estimates without it. Add `--include-deepseek` when you want DeepSeek API model prices and compatibility aliases in the same local pricing cache.
 
 For a Codex-only dashboard, use `--source codex` on `refresh` and `serve-dashboard`.
 

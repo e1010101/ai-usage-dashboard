@@ -271,6 +271,6 @@ Most setup and file-writing commands accept `--json` and return a schema-specifi
 - `init-thresholds --json`, `init-projects --json`
 - `support-bundle --json`
 
-`codex-usage-tracker-update-pricing-v1` includes `deepseek_model_count`, `alias_count`, and `source_urls`. These are zero or single-source values unless `update-pricing --include-deepseek` or `update_usage_pricing_config(include_deepseek=True)` is used.
+`codex-usage-tracker-update-pricing-v1` includes `deepseek_model_count`, `anthropic_model_count`, `alias_count`, and `source_urls`. These are zero or single-source values unless `update-pricing --include-deepseek` / `--include-anthropic` or `update_usage_pricing_config(include_deepseek=True)` / `update_usage_pricing_config(include_anthropic=True)` is used.
 
 `context` already returns JSON because it is an explicit on-demand context request. Treat `codex-usage-tracker-context-v1` output as sensitive local context even though it is redacted and size-limited. MCP returns `codex-usage-tracker-context-disabled-v1` when raw context loading has not been explicitly enabled with `CODEX_USAGE_TRACKER_ALLOW_RAW_CONTEXT=1`.

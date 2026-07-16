@@ -61,6 +61,7 @@ from codex_usage_tracker.paths import (
 )
 from codex_usage_tracker.plugin_installer import install_plugin, uninstall_plugin
 from codex_usage_tracker.pricing import (
+    ANTHROPIC_PRICING_URL,
     DEEPSEEK_PRICING_URL,
     OPENAI_PRICING_MD_URL,
     VALID_PRICING_TIERS,
@@ -553,6 +554,12 @@ def _add_pricing_parsers(
         help="Also fetch DeepSeek API pricing and compatibility aliases into the same cache.",
     )
     update_pricing.add_argument("--deepseek-source-url", default=DEEPSEEK_PRICING_URL)
+    update_pricing.add_argument(
+        "--include-anthropic",
+        action="store_true",
+        help="Also fetch Anthropic (Claude) pricing and compatibility aliases into the same cache.",
+    )
+    update_pricing.add_argument("--anthropic-source-url", default=ANTHROPIC_PRICING_URL)
     update_pricing.add_argument(
         "--no-estimates",
         action="store_true",
@@ -1245,6 +1252,8 @@ def _run_update_pricing(args: argparse.Namespace) -> int:
         include_estimates=not args.no_estimates,
         include_deepseek=args.include_deepseek,
         deepseek_source_url=args.deepseek_source_url,
+        include_anthropic=args.include_anthropic,
+        anthropic_source_url=args.anthropic_source_url,
     )
     if args.as_json:
         _print_json(
@@ -1257,6 +1266,7 @@ def _run_update_pricing(args: argparse.Namespace) -> int:
                 "model_count": result.model_count,
                 "estimated_model_count": result.estimated_model_count,
                 "deepseek_model_count": result.deepseek_model_count,
+                "anthropic_model_count": result.anthropic_model_count,
                 "alias_count": result.alias_count,
                 "source_urls": list(result.source_urls),
                 "backup_path": path_payload(result.backup_path) if result.backup_path else None,
@@ -1275,10 +1285,16 @@ def _run_update_pricing(args: argparse.Namespace) -> int:
         if result.deepseek_model_count
         else ""
     )
+    anthropic_suffix = (
+        f", including {result.anthropic_model_count} Anthropic model"
+        f"{'' if result.anthropic_model_count == 1 else 's'}"
+        if result.anthropic_model_count
+        else ""
+    )
     print(
         f"Wrote {result.model_count} {result.tier} pricing entries from "
         f"{', '.join(result.source_urls or (result.source_url,))} "
-        f"to {result.path}{estimate_suffix}{deepseek_suffix}"
+        f"to {result.path}{estimate_suffix}{deepseek_suffix}{anthropic_suffix}"
         + (f" (backup: {result.backup_path})" if result.backup_path else "")
     )
     return 0
