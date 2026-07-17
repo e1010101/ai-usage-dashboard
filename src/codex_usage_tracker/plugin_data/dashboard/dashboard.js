@@ -35,10 +35,14 @@
   let totalAvailableRows = Number(initialPayload.total_available_rows || data.length);
 
   const rowByRecordId = new Map();
+  let oldestLoadedMs = null;
   function rebuildDashboardIndexes() {
     rowByRecordId.clear();
+    oldestLoadedMs = null;
     data.forEach(row => {
       if (row.record_id) rowByRecordId.set(String(row.record_id), row);
+      const ts = Date.parse(row.event_timestamp);
+      if (!Number.isNaN(ts) && (oldestLoadedMs === null || ts < oldestLoadedMs)) oldestLoadedMs = ts;
     });
   }
 
@@ -66,6 +70,7 @@
   const heroSentenceEl = el('heroSentence');
   const chartTitleEl = el('chartTitle');
   const chartBarsEl = el('chartBars');
+  const coverageNoteEl = el('coverageNote');
   const limitsGroupsEl = el('limitsGroups');
   const overviewSectionEl = el('overviewSection');
   const callsSectionEl = el('callsSection');
@@ -542,6 +547,19 @@
         </button>
       `;
     }).join('');
+  }
+
+  function renderCoverageNote(scope) {
+    const truncated = data.length && totalAvailableRows > data.length && oldestLoadedMs !== null;
+    const wantsOlder = truncated
+      && (scope.win.startMs === null || scope.win.startMs < oldestLoadedMs);
+    if (!wantsOlder) {
+      coverageNoteEl.hidden = true;
+      coverageNoteEl.textContent = '';
+      return;
+    }
+    coverageNoteEl.hidden = false;
+    coverageNoteEl.textContent = `! range incomplete — loaded newest ${number.format(data.length)} of ${number.format(totalAvailableRows)} rows; usage before ${fullDayFormat.format(new Date(oldestLoadedMs))} is not shown`;
   }
 
   function limitLevel(percent) {
@@ -1108,6 +1126,7 @@
     renderFiltersPopover(scope);
     renderAnswerStrip(scope);
     renderChart(scope);
+    renderCoverageNote(scope);
     renderLimits();
     document.querySelectorAll('.view-btn').forEach(button => {
       button.dataset.active = button.dataset.view === state.view ? 'true' : 'false';
