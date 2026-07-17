@@ -7,6 +7,7 @@ import json
 import secrets
 import sqlite3
 import threading
+import time
 import webbrowser
 from datetime import datetime, timezone
 from functools import partial
@@ -14,6 +15,7 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import ip_address
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from codex_usage_tracker.adapters.base import SOURCE_CODEX
@@ -37,6 +39,11 @@ from codex_usage_tracker.paths import (
     DEFAULT_THRESHOLDS_PATH,
 )
 from codex_usage_tracker.store import refresh_usage_index
+
+# A rescan is skipped while a previous one is younger than the larger of this
+# floor and the previous scan's own duration, so heavy indexes never rescan
+# back-to-back while small ones keep near-poll-cadence freshness.
+REFRESH_DEBOUNCE_MIN_SECONDS = 5.0
 
 
 def serve_dashboard(
@@ -110,6 +117,7 @@ def serve_dashboard(
         api_token=api_token,
         context_api_enabled=context_api_enabled,
         refresh_lock=threading.Lock(),
+        refresh_state={},
         limit_history_path=limit_history_path,
     )
     server = ThreadingHTTPServer((host, port), handler)
@@ -146,6 +154,7 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
         api_token: str,
         context_api_enabled: bool,
         refresh_lock: threading.Lock,
+        refresh_state: dict[str, Any] | None = None,
         claude_limits_path: Path = DEFAULT_CLAUDE_LIMITS_PATH,
         claude_home: Path = DEFAULT_CLAUDE_HOME,
         hermes_home: Path = DEFAULT_HERMES_HOME,
@@ -176,6 +185,9 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
         self._api_token = api_token
         self._context_api_enabled = context_api_enabled
         self._refresh_lock = refresh_lock
+        # Shared across requests when the caller passes one dict (serve_dashboard
+        # does); a per-request dict disables debouncing, matching old behavior.
+        self._refresh_state = refresh_state if refresh_state is not None else {}
         super().__init__(*args, **kwargs)
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib hook name
@@ -281,25 +293,7 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
                         {"error": "Valid API token is required for refresh"},
                     )
                     return
-                with self._refresh_lock:
-                    result = refresh_usage_index(
-                        codex_home=self._codex_home,
-                        claude_home=self._claude_home,
-                        hermes_home=self._hermes_home,
-                        db_path=self._db_path,
-                        include_archived=include_archived,
-                        source=self._source,
-                    )
-                refresh_result = {
-                    "scanned_files": result.scanned_files,
-                    "parsed_events": result.parsed_events,
-                    "skipped_events": result.skipped_events,
-                    "inserted_or_updated_events": result.inserted_or_updated_events,
-                    "db_path": result.db_path,
-                    "parser_diagnostics": result.parser_diagnostics,
-                    "source_results": result.source_results,
-                    "include_archived": include_archived,
-                }
+                refresh_result = self._refresh_index_debounced(include_archived)
             payload = dashboard_payload(
                 db_path=self._db_path,
                 limit=limit,
@@ -335,6 +329,59 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
         payload["refreshed_at"] = _utc_now()
         payload["refresh_result"] = refresh_result
         self._send_json(HTTPStatus.OK, payload)
+
+    def _refresh_index_debounced(self, include_archived: bool) -> dict[str, Any]:
+        state = self._refresh_state
+        with self._refresh_lock:
+            if state.get("in_progress"):
+                return self._skipped_refresh_result("in_progress")
+            last_completed = state.get("last_completed")
+            if last_completed is not None:
+                debounce = max(
+                    REFRESH_DEBOUNCE_MIN_SECONDS, float(state.get("last_duration") or 0.0)
+                )
+                if time.monotonic() - last_completed < debounce:
+                    return self._skipped_refresh_result("debounced")
+            state["in_progress"] = True
+        try:
+            started = time.monotonic()
+            # Scans run outside the lock so concurrent polls answer immediately
+            # from the current index instead of queueing behind a long rescan.
+            result = refresh_usage_index(
+                codex_home=self._codex_home,
+                claude_home=self._claude_home,
+                hermes_home=self._hermes_home,
+                db_path=self._db_path,
+                include_archived=include_archived,
+                source=self._source,
+            )
+            duration = time.monotonic() - started
+            refresh_result = {
+                "scanned_files": result.scanned_files,
+                "parsed_events": result.parsed_events,
+                "skipped_events": result.skipped_events,
+                "inserted_or_updated_events": result.inserted_or_updated_events,
+                "db_path": result.db_path,
+                "parser_diagnostics": result.parser_diagnostics,
+                "source_results": result.source_results,
+                "include_archived": include_archived,
+                "refresh_seconds": round(duration, 3),
+                "skipped": False,
+            }
+            with self._refresh_lock:
+                state["last_completed"] = time.monotonic()
+                state["last_duration"] = duration
+                state["last_result"] = dict(refresh_result)
+            return refresh_result
+        finally:
+            with self._refresh_lock:
+                state["in_progress"] = False
+
+    def _skipped_refresh_result(self, reason: str) -> dict[str, Any]:
+        skipped = dict(self._refresh_state.get("last_result") or {})
+        skipped["skipped"] = True
+        skipped["skip_reason"] = reason
+        return skipped
 
     def _handle_usage_row(self, query: str) -> None:
         params = parse_qs(query)

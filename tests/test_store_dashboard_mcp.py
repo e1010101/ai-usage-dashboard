@@ -1268,6 +1268,64 @@ def test_dashboard_server_usage_api_refreshes_aggregate_rows(tmp_path: Path) -> 
     assert "SECRET RAW PROMPT" not in json.dumps(limited_payload)
 
 
+def test_dashboard_server_debounces_back_to_back_refresh_scans(tmp_path: Path) -> None:
+    from codex_usage_tracker.server import _UsageDashboardHandler
+
+    codex_home = _make_codex_home(tmp_path)
+    db_path = tmp_path / "usage.sqlite3"
+    pricing_path = _write_pricing(tmp_path / "pricing.json")
+    handler = partial(
+        _UsageDashboardHandler,
+        directory=str(tmp_path),
+        db_path=db_path,
+        pricing_path=pricing_path,
+        allowance_path=tmp_path / "allowance.json",
+        thresholds_path=tmp_path / "thresholds.json",
+        projects_path=tmp_path / "projects.json",
+        limit=5000,
+        since=None,
+        codex_home=codex_home,
+        include_archived=False,
+        dashboard_name="dashboard.html",
+        context_chars=2000,
+        api_token="test-token",
+        context_api_enabled=False,
+        refresh_lock=threading.Lock(),
+        refresh_state={},
+        limit_history_path=tmp_path / "limit-history.json",
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+
+        def fetch_refresh() -> dict[str, object]:
+            with urllib.request.urlopen(  # noqa: S310 - local test server only
+                urllib.request.Request(
+                    f"http://127.0.0.1:{server.server_port}/api/usage?refresh=1&limit=2",
+                    headers={"X-Codex-Usage-Token": "test-token"},
+                ),
+                timeout=5,
+            ) as response:
+                return json.loads(response.read().decode("utf-8"))
+
+        first = fetch_refresh()
+        second = fetch_refresh()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert first["refresh_result"]["skipped"] is False
+    assert first["refresh_result"]["parsed_events"] == 4
+    assert first["refresh_result"]["refresh_seconds"] >= 0
+    assert second["refresh_result"]["skipped"] is True
+    assert second["refresh_result"]["skip_reason"] == "debounced"
+    # A skipped rescan still reports the last completed scan and serves rows.
+    assert second["refresh_result"]["parsed_events"] == 4
+    assert len(second["rows"]) == 2
+
+
 def test_dashboard_server_usage_row_api_loads_full_aggregate_row(tmp_path: Path) -> None:
     from codex_usage_tracker.server import _UsageDashboardHandler
 
