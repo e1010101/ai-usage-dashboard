@@ -205,6 +205,13 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
             "style-src 'self'; connect-src 'self'; "
             "img-src 'self' data:; object-src 'none'; base-uri 'none'",
         )
+        # The dashboard HTML embeds a per-server-start API token, so a cached
+        # page keeps a dead token and every live refresh 403s. Assets are
+        # content-hash versioned and stay cacheable; API responses set their
+        # own no-store header in _send_json.
+        path = self.path.split("?", 1)[0]
+        if not path.startswith("/api/") and "/codex-usage-tracker-assets/" not in path:
+            self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
     def log_message(self, format: str, *args: object) -> None:

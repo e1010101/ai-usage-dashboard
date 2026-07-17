@@ -1266,6 +1266,17 @@
       const message = error.message || String(error);
       updateLiveStatus('refresh error', `Live refresh unavailable: ${message}${manual ? '. Reload this page after regenerating a static dashboard, or run ai-usage-dashboard serve-dashboard.' : ''}`);
       if (manual && message === 'HTTP 404') window.location.reload();
+      // A 403 means this page's embedded API token belongs to a previous
+      // server process; a fresh page load mints a matching token. Guard with
+      // a timestamp so a genuinely broken server cannot cause a reload loop.
+      if (message === 'HTTP 403') {
+        let lastReload = 0;
+        try { lastReload = Number(window.sessionStorage.getItem('usageTokenReloadAt')) || 0; } catch (storageError) { lastReload = Date.now(); }
+        if (Date.now() - lastReload > 60000) {
+          try { window.sessionStorage.setItem('usageTokenReloadAt', String(Date.now())); } catch (storageError) { /* ignore */ }
+          window.location.reload();
+        }
+      }
     } finally {
       refreshInFlight = false;
       if (refreshQueued) {
