@@ -855,6 +855,9 @@ def test_dashboard_overview_and_calls_contract(tmp_path: Path) -> None:
         assert symbol in dashboard_js
     assert "low cache" in dashboard_js
     assert "est. price" in dashboard_js
+    # Truncation honesty: visible coverage note when loaded rows don't span the range.
+    assert 'id="coverageNote"' in dashboard
+    assert "range incomplete" in dashboard_js
     # Attention rail: max three cards in priority order, with a quiet empty state.
     assert "Context bloat" in dashboard_js
     assert "Low cache reuse" in dashboard_js
