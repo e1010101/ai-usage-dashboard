@@ -123,7 +123,7 @@ For a Codex-only dashboard, use `--source codex` on `refresh` and `serve-dashboa
 
 Then:
 
-1. Leave the `[ live ]` chip on while working; the dashboard refreshes every 10 seconds.
+1. Leave the `[ live ]` chip on while working; the dashboard refreshes every 10 seconds. Log rescans are debounced server-side to at least the duration of the previous scan, so large indexes stay responsive between scans.
 2. Read the answer strip first: it names the top thread by spend and its main efficiency signal.
 3. Use the range presets (`this week · 7d · month · 30d · all · custom`) or click a spend-chart bar to focus on a day or week.
 4. Work through the `:: needs attention` cards and drill into flagged threads for their timeline and spawned work.

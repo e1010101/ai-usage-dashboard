@@ -50,7 +50,7 @@ Redacted mode hides raw cwd/source paths, hides Git remote labels, and hashes un
 
 The server keeps the HTML aggregate-only and enables two live features:
 
-- The `[ live ]` chip in the title row auto-refreshes the aggregate rows every 10 seconds and rescans the sources selected when the dashboard server started. Click it to pause or resume live refresh.
+- The `[ live ]` chip in the title row auto-refreshes the aggregate rows every 10 seconds and rescans the sources selected when the dashboard server started. Click it to pause or resume live refresh. Source rescans are debounced server-side: a new scan is skipped while the previous one is younger than the larger of five seconds and that scan's own duration, so polling a large index re-reads the current database instead of rescanning logs back-to-back.
 - `> load context` in the call-details rail reads one selected model call from the original local JSONL file only when you ask for it.
 
 For a static snapshot, use:
