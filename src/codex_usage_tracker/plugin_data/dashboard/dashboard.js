@@ -516,7 +516,7 @@
       return value === null ? total : total + value;
     }, 0);
     heroCostEl.textContent = money(scope.cost);
-    heroTokensEl.textContent = compactTokens(tokens);
+    heroTokensEl.textContent = number.format(tokens);
     heroCallsEl.textContent = number.format(scope.rows.length);
     heroThreadsEl.textContent = number.format(scope.threads.length);
     heroCreditsEl.textContent = creditTotal ? `${credits(creditTotal)} Codex credits used` : '';
@@ -541,8 +541,8 @@
       const title = `${bucket.bucketLabel} · Codex ${money(bucket.openai)} · Claude ${money(bucket.anthropic)}${selected ? ' · click to clear' : ' · click to filter'}`;
       return `
         <button type="button" class="chart-col" data-day-key="${escapeHtml(bucket.key)}" data-selected="${selected ? 'true' : 'false'}" data-today="${bucket.today ? 'true' : 'false'}" title="${escapeHtml(title)}">
-          <span class="chart-seg-anthropic" style="height: ${anthHeight}px; opacity: ${opacity};"></span>
-          <span class="chart-seg-openai" style="height: ${openaiHeight}px; opacity: ${opacity};"></span>
+          <span class="chart-seg-anthropic" data-css="height: ${anthHeight}px; opacity: ${opacity}"></span>
+          <span class="chart-seg-openai" data-css="height: ${openaiHeight}px; opacity: ${opacity}"></span>
           <span class="chart-label">${escapeHtml(bucket.label)}</span>
         </button>
       `;
@@ -588,7 +588,7 @@
                 <span class="limit-window-label">${escapeHtml(windowLabel)}</span>
                 <span class="limit-window-value">n/a</span>
               </div>
-              <div class="limit-meter"><span class="limit-fill" style="width: 0%"></span></div>
+              <div class="limit-meter"><span class="limit-fill" data-css="width: 0%"></span></div>
             </div>
           `;
         }
@@ -599,7 +599,7 @@
               <span class="limit-window-label">${escapeHtml(windowLabel)}</span>
               <span class="limit-window-value" data-level="${level}">${pctRound(percent)} left</span>
             </div>
-            <div class="limit-meter"><span class="limit-fill" data-level="${level}" style="width: ${Math.max(0, Math.min(100, Math.round(percent * 100)))}%"></span></div>
+            <div class="limit-meter"><span class="limit-fill" data-level="${level}" data-css="width: ${Math.max(0, Math.min(100, Math.round(percent * 100)))}%"></span></div>
           </div>
         `;
       }).join('');
@@ -655,7 +655,7 @@
                 ${signalChip}
               </div>
               <div class="share-row">
-                <span class="share-bar"><span class="share-fill" data-provider="${thread.provider}" style="width: ${pctRound(thread.share)}"></span></span>
+                <span class="share-bar"><span class="share-fill" data-provider="${thread.provider}" data-css="width: ${pctRound(thread.share)}"></span></span>
                 <span class="share-pct">${pctRound(thread.share)} of spend</span>
               </div>
             </div>
@@ -820,7 +820,7 @@
           ${relations.map(relation => `
             <div class="rel-row">
               <span class="rel-tick">└</span>
-              <div style="min-width: 0;">
+              <div class="cell-clip">
                 <div class="rel-name">${escapeHtml(relation.name)} <span class="rel-kind" data-kind="${relation.kindAttr}">· ${escapeHtml(relation.kind)}</span></div>
                 <div class="rel-meta">${escapeHtml(relation.meta)}</div>
               </div>
@@ -836,10 +836,10 @@
       return `
         <div class="timeline-row">
           <div class="timeline-time">${escapeHtml(timelineFormat.format(new Date(call.event_timestamp)))}</div>
-          <div style="min-width: 0;">
+          <div class="cell-clip">
             <div class="timeline-model">${escapeHtml(call.model || 'unknown')} <span class="call-kind" data-kind="${kind}">· ${kind}</span></div>
             <div class="timeline-meta">${escapeHtml(`${compactTokens(call.total_tokens)} tok · ${money(call.estimated_cost_usd)}${estimatedMark} · cache ${pctRound(call.cache_ratio)}`)}</div>
-            <div class="context-meter" title="${escapeHtml(`context use ${pctRound(context)}`)}"><span class="context-fill" data-level="${contextLevel(context)}" style="width: ${Math.round(context * 100)}%"></span></div>
+            <div class="context-meter" title="${escapeHtml(`context use ${pctRound(context)}`)}"><span class="context-fill" data-level="${contextLevel(context)}" data-css="width: ${Math.round(context * 100)}%"></span></div>
           </div>
         </div>
       `;
@@ -941,7 +941,7 @@
           <div class="call-row" data-record-id="${escapeHtml(String(row.record_id || ''))}" data-selected="${state.selectedCall === String(row.record_id) ? 'true' : 'false'}" role="button" tabindex="0">
             <div class="call-time"><span class="call-date">${escapeHtml(shortDateFormat.format(date))}</span><br><span class="call-clock">${escapeHtml(clockFormat.format(date))}</span></div>
             <div class="call-thread" title="${escapeHtml(threadLabel)}">${escapeHtml(threadLabel)}<br><span class="call-thread-kind">${callKindOf(row)}</span></div>
-            <div style="min-width: 0;"><span class="model-pill" data-provider="${row.source_provider === 'anthropic' ? 'anthropic' : 'openai'}">${escapeHtml(row.model || 'unknown')}</span></div>
+            <div class="cell-clip"><span class="model-pill" data-provider="${row.source_provider === 'anthropic' ? 'anthropic' : 'openai'}">${escapeHtml(row.model || 'unknown')}</span></div>
             <div class="call-effort">${escapeHtml(row.effort || '—')}</div>
             <div class="call-num">${escapeHtml(compactTokens(row.total_tokens))}</div>
             <div class="call-num">${escapeHtml(callCostText(row))}<br><span class="col-sub">${escapeHtml(callCreditsText(row))}</span></div>
@@ -1050,7 +1050,7 @@
           <summary>prompt context (loads on demand)</summary>
           <div class="rail-collapse-body">
             <p class="context-note">Context is read from the local JSONL log on request. It is never persisted to SQLite or dashboard HTML.</p>
-            <span style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <span class="rail-btn-row">
               <button type="button" class="rail-action-btn" data-action="load-context">&gt; load context</button>
               <button type="button" class="rail-action-btn" data-action="load-context-output">&gt; include tool output</button>
             </span>
@@ -1119,6 +1119,15 @@
   }
 
   /* ---- Main render ---- */
+  // The server's CSP has no style-src 'unsafe-inline', so browsers strip
+  // inline style attributes from rendered markup. Dynamic values are carried
+  // in data-css and applied through the CSSOM, which CSP permits.
+  function applyPendingStyles() {
+    document.querySelectorAll('[data-css]').forEach(node => {
+      node.style.cssText = node.dataset.css;
+      node.removeAttribute('data-css');
+    });
+  }
   function render() {
     const scope = computeScope();
     updatePromptLine(scope);
@@ -1141,6 +1150,7 @@
       renderCallRail(scope);
     }
     renderFooterMeta();
+    applyPendingStyles();
     syncUrlState();
   }
 
