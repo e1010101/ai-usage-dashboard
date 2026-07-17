@@ -1178,6 +1178,15 @@ def test_dashboard_server_usage_api_refreshes_aggregate_rows(tmp_path: Path) -> 
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
+        try:
+            with urllib.request.urlopen(  # noqa: S310 - local test server only
+                f"http://127.0.0.1:{server.server_port}/", timeout=5
+            ) as response:
+                page_cache_control = response.headers.get("Cache-Control")
+        except urllib.error.HTTPError as exc:
+            # No dashboard.html is generated in this test; the 404 error
+            # response carries the same page cache headers.
+            page_cache_control = exc.headers.get("Cache-Control")
         refresh_without_token = _http_error_json(
             f"http://127.0.0.1:{server.server_port}/api/usage?refresh=1&limit=2"
         )
@@ -1228,6 +1237,7 @@ def test_dashboard_server_usage_api_refreshes_aggregate_rows(tmp_path: Path) -> 
     assert "connect-src 'self'" in content_security_policy
     assert "unsafe-inline" not in content_security_policy
     assert referrer_policy == "no-referrer"
+    assert page_cache_control == "no-store"
     assert len(all_payload["rows"]) == 4
     assert all_payload["loaded_row_count"] == 4
     assert all_payload["total_available_rows"] == 4
