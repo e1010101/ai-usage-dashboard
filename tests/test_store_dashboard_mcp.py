@@ -858,6 +858,11 @@ def test_dashboard_overview_and_calls_contract(tmp_path: Path) -> None:
     # Truncation honesty: visible coverage note when loaded rows don't span the range.
     assert 'id="coverageNote"' in dashboard
     assert "range incomplete" in dashboard_js
+    # CSP has no style-src 'unsafe-inline': dynamic styles must go through
+    # data-css + CSSOM, never inline style attributes (browsers strip those).
+    assert 'style="' not in dashboard_js
+    assert "data-css" in dashboard_js
+    assert "applyPendingStyles" in dashboard_js
     # Attention rail: max three cards in priority order, with a quiet empty state.
     assert "Context bloat" in dashboard_js
     assert "Low cache reuse" in dashboard_js

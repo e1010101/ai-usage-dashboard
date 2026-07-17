@@ -460,6 +460,12 @@ h1 {
   font-size: 11px;
   line-height: 1.45;
 }
+.cell-clip { min-width: 0; }
+.rail-btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .limits-groups { display: grid; gap: 12px; }
 .limit-group {
   display: grid;
