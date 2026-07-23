@@ -645,6 +645,49 @@ def query_dashboard_events(
         return [_row_to_dict(row) for row in rows]
 
 
+def query_usage_rollups(
+    db_path: Path = DEFAULT_DB_PATH,
+    since: str | None = None,
+    until: str | None = None,
+    include_archived: bool = True,
+) -> list[dict[str, Any]]:
+    """Return hourly usage rollups independent of the loaded dashboard row slice.
+
+    Buckets are UTC hours (``YYYY-MM-DDTHH``) so clients can rebucket into any
+    whole-hour local timezone without a server round-trip.
+    """
+
+    where_clause, params = _usage_where_clause(
+        since=since,
+        until=until,
+        include_archived=include_archived,
+    )
+    with connect(db_path) as conn:
+        init_db(conn)
+        rows = conn.execute(
+            f"""
+            SELECT
+                substr(event_timestamp, 1, 13) AS bucket_utc_hour,
+                coalesce(source_provider, 'unknown provider') AS source_provider,
+                coalesce(source_app, 'unknown app') AS source_app,
+                model,
+                effort,
+                COUNT(*) AS event_count,
+                SUM(input_tokens) AS input_tokens,
+                SUM(cached_input_tokens) AS cached_input_tokens,
+                SUM(output_tokens) AS output_tokens,
+                SUM(reasoning_output_tokens) AS reasoning_output_tokens,
+                SUM(total_tokens) AS total_tokens
+            FROM usage_events
+            {where_clause}
+            GROUP BY bucket_utc_hour, source_provider, source_app, model, effort
+            ORDER BY bucket_utc_hour, source_provider, source_app, model, effort
+            """,
+            params,
+        )
+        return [_row_to_dict(row) for row in rows]
+
+
 def query_dashboard_event_count(
     db_path: Path = DEFAULT_DB_PATH,
     since: str | None = None,

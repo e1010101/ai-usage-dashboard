@@ -34,7 +34,11 @@ from codex_usage_tracker.paths import (
     DEFAULT_RATE_CARD_PATH,
     DEFAULT_THRESHOLDS_PATH,
 )
-from codex_usage_tracker.pricing import annotate_rows_with_efficiency, load_pricing_config
+from codex_usage_tracker.pricing import (
+    annotate_rollups_with_cost,
+    annotate_rows_with_efficiency,
+    load_pricing_config,
+)
 from codex_usage_tracker.projects import (
     annotate_rows_with_project_identity,
     apply_project_privacy_to_rows,
@@ -51,6 +55,7 @@ from codex_usage_tracker.store import (
     query_dashboard_events,
     query_source_summaries,
     query_usage_record,
+    query_usage_rollups,
     refresh_metadata,
 )
 from codex_usage_tracker.threads import annotate_thread_attachments
@@ -159,6 +164,15 @@ def dashboard_payload(
         privacy_mode=privacy_mode,
     )
     payload_rows = _compact_dashboard_rows(annotated_rows) if compact_rows else annotated_rows
+    usage_rollups = annotate_rollups_with_cost(
+        query_usage_rollups(
+            db_path=db_path,
+            since=since,
+            until=until,
+            include_archived=include_archived,
+        ),
+        pricing,
+    )
     allowance_summary = summarize_allowance_usage(annotated_rows, allowance)
     normalized_limit = _normalize_limit(limit)
     total_available_rows = query_dashboard_event_count(
@@ -188,6 +202,8 @@ def dashboard_payload(
     return {
         "rows": payload_rows,
         "rows_compact": compact_rows,
+        "usage_rollups": usage_rollups,
+        "usage_rollups_bucket": "utc-hour",
         "pricing_configured": pricing.loaded and not pricing.error,
         "pricing_source": pricing.source,
         "pricing_snapshot": _pricing_snapshot(pricing.loaded, pricing.source, pricing.models),

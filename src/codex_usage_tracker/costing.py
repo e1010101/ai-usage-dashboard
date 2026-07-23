@@ -96,6 +96,30 @@ def annotate_rows_with_efficiency(
     return annotated
 
 
+def annotate_rollups_with_cost(
+    rollups: list[dict[str, Any]],
+    pricing: PricingConfig | None = None,
+    *,
+    pricing_path: Path = DEFAULT_PRICING_PATH,
+) -> list[dict[str, Any]]:
+    """Return copied rollup groups with cost estimates and pricing flags.
+
+    Pricing is linear in token components, so rates applied to group sums
+    match the sum of per-row costs exactly.
+    """
+
+    config = pricing or load_pricing_config(pricing_path)
+    annotated: list[dict[str, Any]] = []
+    for group in rollups:
+        copy = dict(group)
+        model = copy.get("model")
+        copy["estimated_cost_usd"] = estimate_cost_usd(copy, config, model=model)
+        copy["pricing_model"] = config.priced_as(model)
+        copy["pricing_estimated"] = config.is_estimated_model(model)
+        annotated.append(copy)
+    return annotated
+
+
 def estimate_cost_usd(
     row: dict[str, Any], pricing: PricingConfig, *, model: object | None = None
 ) -> float | None:

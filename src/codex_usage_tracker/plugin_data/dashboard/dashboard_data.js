@@ -5,6 +5,10 @@
     return Array.isArray(nextPayload) ? nextPayload : Array.isArray(nextPayload.rows) ? nextPayload.rows : [];
   }
 
+  function payloadRollups(nextPayload) {
+    return nextPayload && Array.isArray(nextPayload.usage_rollups) ? nextPayload.usage_rollups : [];
+  }
+
   function payloadLimit(nextPayload) {
     if (!nextPayload || nextPayload.limit === null || nextPayload.limit === undefined) return null;
     const parsed = Number(nextPayload.limit);
@@ -140,6 +144,7 @@
 
   window.CodexUsageDashboardData = Object.freeze({
     payloadRows,
+    payloadRollups,
     payloadLimit,
     limitValue,
     optionValueExists,
