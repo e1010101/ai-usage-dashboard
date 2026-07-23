@@ -39,6 +39,7 @@ from codex_usage_tracker.store import (
     query_most_expensive_calls,
     query_session_usage,
     query_summary,
+    query_thread_session_groups,
     query_usage_rollups,
     rebuild_usage_index,
     refresh_metadata,
@@ -2376,6 +2377,7 @@ def test_query_usage_rollups_buckets_hourly_and_filters(tmp_path: Path) -> None:
     assert first["output_tokens"] == 100
     assert first["reasoning_output_tokens"] == 10
     assert first["total_tokens"] == 2100
+    assert {group["thread_type"] for group in rollups} == {"parent"}
     assert [group["bucket_utc_hour"] for group in windowed] == ["2026-07-01T11"]
 
 
@@ -2404,3 +2406,90 @@ def test_dashboard_payload_rollups_stay_complete_when_rows_truncated(tmp_path: P
         assert group["pricing_model"] == "gpt-5.5"
         assert group["pricing_estimated"] is False
         assert abs(group["estimated_cost_usd"] - expected_cost) < 1e-12
+
+
+def test_thread_rollups_attach_subagents_to_parent_thread(tmp_path: Path) -> None:
+    from codex_usage_tracker.threads import build_thread_rollups
+
+    db_path = tmp_path / "usage.sqlite3"
+    upsert_usage_events(
+        [
+            _rollup_event(
+                "parent-1",
+                "2026-07-01T10:05:00.000Z",
+                session_id="sess-parent",
+                thread_name="Parent thread",
+            ),
+            _rollup_event(
+                "parent-2",
+                "2026-07-01T10:25:00.000Z",
+                session_id="sess-parent",
+                thread_name="Parent thread",
+            ),
+            _rollup_event(
+                "spawned-1",
+                "2026-07-01T10:35:00.000Z",
+                session_id="sess-child",
+                thread_name=None,
+                thread_source="subagent",
+                subagent_type="thread_spawn",
+                parent_session_id="sess-parent",
+            ),
+        ],
+        db_path=db_path,
+    )
+
+    groups = query_thread_session_groups(db_path=db_path)
+    rollups = build_thread_rollups(groups)
+
+    assert {group["resolved_parent_thread_name"] for group in groups} == {None, "Parent thread"}
+    assert [
+        (group["thread_key"], group["thread_label"], group["thread_type"], group["event_count"])
+        for group in rollups
+    ] == [
+        ("thread:Parent thread", "Parent thread", "parent", 2),
+        ("thread:Parent thread", "Parent thread", "spawned", 1),
+    ]
+    assert sum(group["total_tokens"] for group in rollups) == 3150
+    assert rollups[0]["max_context_ratio"] is not None
+
+
+def test_dashboard_payload_thread_rollups_complete_and_slim(tmp_path: Path) -> None:
+    db_path = tmp_path / "usage.sqlite3"
+    pricing_path = _write_pricing(tmp_path / "pricing.json")
+    upsert_usage_events(
+        [
+            _rollup_event(
+                "parent-1",
+                "2026-07-01T10:05:00.000Z",
+                session_id="sess-parent",
+                thread_name="Parent thread",
+            ),
+            _rollup_event(
+                "other-1",
+                "2026-07-02T09:05:00.000Z",
+                session_id="sess-other",
+                thread_name="Other thread",
+            ),
+        ],
+        db_path=db_path,
+    )
+
+    payload = dashboard_payload(db_path=db_path, limit=1, pricing_path=pricing_path)
+
+    thread_rollups = payload["thread_rollups"]
+    assert len(payload["rows"]) == 1
+    assert {group["thread_label"] for group in thread_rollups} == {
+        "Parent thread",
+        "Other thread",
+    }
+    expected_cost = (400 * 2.0 + 600 * 0.5 + 50 * 10.0) / 1_000_000
+    for group in thread_rollups:
+        assert abs(group["estimated_cost_usd"] - expected_cost) < 1e-12
+        assert "usage_credits" in group
+        assert "usage_credit_confidence" in group
+        assert "usage_credit_source" not in group
+    for group in payload["usage_rollups"]:
+        assert group["thread_type"] == "parent"
+        assert "usage_credits" in group
+        assert "usage_credit_source" not in group

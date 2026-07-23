@@ -11,6 +11,7 @@
   const {
     payloadRows,
     payloadRollups,
+    payloadThreadRollups,
     payloadLimit,
     usageCreditValue,
     isAutoReview,
@@ -25,6 +26,7 @@
 
   let data = payloadRows(initialPayload);
   let rollups = [];
+  let threadRollups = [];
   let pricingSource = initialPayload.pricing_source || {};
   let pricingSnapshotWarning = initialPayload.pricing_snapshot_warning || '';
   let providerLimitSnapshots = initialPayload.provider_limit_snapshots || {};
@@ -47,11 +49,15 @@
       if (!Number.isNaN(ts) && (oldestLoadedMs === null || ts < oldestLoadedMs)) oldestLoadedMs = ts;
     });
   }
-  function indexRollups(nextPayload) {
-    rollups = payloadRollups(nextPayload).map(group => {
+  function withBucketTime(groups) {
+    return groups.map(group => {
       const tsMs = Date.parse(`${group.bucket_utc_hour}:00:00.000Z`);
       return Number.isNaN(tsMs) ? null : { ...group, tsMs };
     }).filter(Boolean);
+  }
+  function indexRollups(nextPayload) {
+    rollups = withBucketTime(payloadRollups(nextPayload));
+    threadRollups = withBucketTime(payloadThreadRollups(nextPayload));
   }
   indexRollups(initialPayload);
 
@@ -327,6 +333,7 @@
         key: group.key,
         label: group.label,
         calls,
+        callCount: calls.length,
         cost,
         tokens,
         cacheRatio,
@@ -335,6 +342,59 @@
         creditTotal,
         share: totalCost ? cost / totalCost : 0,
         hasEstimated: calls.some(call => call.pricing_estimated),
+      };
+    });
+    threads.sort((a, b) => b.cost - a.cost);
+    return threads;
+  }
+
+  function buildThreadsFromRollups(groups, rowThreadsByKey, totalCost) {
+    const byKey = new Map();
+    groups.forEach(group => {
+      let thread = byKey.get(group.thread_key);
+      if (!thread) {
+        thread = {
+          key: group.thread_key,
+          label: group.thread_label,
+          callCount: 0,
+          cost: 0,
+          tokens: 0,
+          cached: 0,
+          uncached: 0,
+          maxContext: 0,
+          creditTotal: 0,
+          allAnthropic: true,
+          hasEstimated: false,
+        };
+        byKey.set(group.thread_key, thread);
+      }
+      thread.callCount += Number(group.event_count) || 0;
+      thread.cost += Number(group.estimated_cost_usd) || 0;
+      thread.tokens += Number(group.total_tokens) || 0;
+      const cached = Number(group.cached_input_tokens) || 0;
+      thread.cached += cached;
+      thread.uncached += Math.max((Number(group.input_tokens) || 0) - cached, 0);
+      thread.maxContext = Math.max(thread.maxContext, Number(group.max_context_ratio) || 0);
+      const creditValue = usageCreditValue(group);
+      if (creditValue !== null) thread.creditTotal += creditValue;
+      thread.allAnthropic = thread.allAnthropic && group.source_provider === 'anthropic';
+      thread.hasEstimated = thread.hasEstimated || Boolean(group.pricing_estimated);
+    });
+    const threads = [...byKey.values()].map(thread => {
+      const rowThread = rowThreadsByKey.get(thread.key);
+      return {
+        key: thread.key,
+        label: thread.label,
+        calls: rowThread ? rowThread.calls : [],
+        callCount: thread.callCount,
+        cost: thread.cost,
+        tokens: thread.tokens,
+        cacheRatio: thread.cached + thread.uncached > 0 ? thread.cached / (thread.cached + thread.uncached) : 0,
+        maxContext: thread.maxContext,
+        provider: thread.allAnthropic ? 'anthropic' : 'openai',
+        creditTotal: thread.creditTotal,
+        share: totalCost ? thread.cost / totalCost : 0,
+        hasEstimated: thread.hasEstimated,
       };
     });
     threads.sort((a, b) => b.cost - a.cost);
@@ -411,14 +471,15 @@
     const baseRows = data.filter(row => (!state.provider || row.source_provider === state.provider) && inWindow(row));
     const scopedRows = baseRows.filter(row => advancedMatches(row, term));
 
-    // Search terms and thread-type filters only exist on raw rows; every other
-    // filter maps onto rollup dimensions, so totals stay exact even when the
-    // loaded row slice is truncated.
-    const rollupsUsable = rollups.length > 0 && !term && !state.fThreadType && !win.invalid;
+    // Free-text search only exists on raw rows; every other filter maps onto
+    // rollup dimensions, so totals stay exact even when the loaded row slice
+    // is truncated.
+    const rollupsUsable = rollups.length > 0 && !term && !win.invalid;
     const groupMatches = group => (!state.provider || group.source_provider === state.provider)
       && (!state.fModel || group.model === state.fModel)
       && (!state.fEffort || (group.effort || 'none') === state.fEffort)
-      && (!state.fConfidence || confidenceOf(group) === state.fConfidence);
+      && (!state.fConfidence || confidenceOf(group) === state.fConfidence)
+      && (!state.fThreadType || (group.thread_type || 'parent') === state.fThreadType);
     const scopedGroups = rollupsUsable ? rollups.filter(groupMatches) : [];
     const windowGroups = scopedGroups.filter(inWindow);
 
@@ -452,12 +513,23 @@
         cost: sum(heroGroups, 'estimated_cost_usd'),
         tokens: sumTokens(heroGroups),
         calls: sum(heroGroups, 'event_count'),
+        credits: heroGroups.reduce((total, group) => {
+          const value = usageCreditValue(group);
+          return value === null ? total : total + value;
+        }, 0),
         priorCost: sum(priorGroups, 'estimated_cost_usd'),
         priorTokens: sumTokens(priorGroups),
       };
     }
     const cost = sum(rows, 'estimated_cost_usd');
-    const threads = buildThreads(rows, cost);
+    const rowThreads = buildThreads(rows, cost);
+    let threads = rowThreads;
+    if (aggregates && threadRollups.length) {
+      let threadGroups = threadRollups.filter(groupMatches).filter(inWindow);
+      if (dayBucket) threadGroups = threadGroups.filter(inDayBucket);
+      const rowThreadsByKey = new Map(rowThreads.map(thread => [thread.key, thread]));
+      threads = buildThreadsFromRollups(threadGroups, rowThreadsByKey, aggregates.cost);
+    }
     return { win, term, baseRows, rows, priorRows, chart, dayBucket, threads, cost, aggregates };
   }
 
@@ -552,17 +624,18 @@
     const top = scope.threads[0];
     if (!top) {
       if (scope.aggregates && scope.aggregates.calls > 0) {
-        return 'Totals cover the full range; per-thread attribution is only available for the newest loaded calls.';
+        return 'Totals cover the full range, but no thread breakdown is available for it.';
       }
       return 'No usage recorded in this range.';
     }
-    const share = pctRound(scope.cost ? top.cost / scope.cost : 0);
+    const totalCost = scope.aggregates ? scope.aggregates.cost : scope.cost;
+    const share = pctRound(totalCost ? top.cost / totalCost : 0);
     const diagnostic = top.maxContext >= 0.6
       ? 'That thread is also carrying heavy context; a fresh thread would cut per-turn cost.'
       : top.cacheRatio >= 0.5
         ? `Cache reuse there is ${pctRound(top.cacheRatio)}, so most input is being served from cache.`
         : `Cache reuse there is only ${pctRound(top.cacheRatio)}, so most input is fresh, uncached tokens.`;
-    return `Most of it went to "${top.label}" — ${money(top.cost)} (${share} of spend) across ${top.calls.length} calls. ${diagnostic}`;
+    return `Most of it went to "${top.label}" — ${money(top.cost)} (${share} of spend) across ${number.format(top.callCount)} calls. ${diagnostic}`;
   }
   function renderAnswerStrip(scope) {
     rangeNounEl.textContent = rangeNounText();
@@ -572,7 +645,7 @@
     const calls = agg ? agg.calls : scope.rows.length;
     const priorCost = agg ? agg.priorCost : sum(scope.priorRows, 'estimated_cost_usd');
     const priorTokens = agg ? agg.priorTokens : sumTokens(scope.priorRows);
-    const creditTotal = scope.rows.reduce((total, row) => {
+    const creditTotal = agg ? agg.credits : scope.rows.reduce((total, row) => {
       const value = usageCreditValue(row);
       return value === null ? total : total + value;
     }, 0);
@@ -627,7 +700,7 @@
     }
     coverageNoteEl.hidden = false;
     coverageNoteEl.textContent = scope.aggregates
-      ? `i totals & chart cover the full range; thread and call lists show the newest ${number.format(data.length)} of ${number.format(totalAvailableRows)} calls (before ${fullDayFormat.format(new Date(oldestLoadedMs))} not listed)`
+      ? `i totals, chart & threads cover the full range; per-call timelines show the newest ${number.format(data.length)} of ${number.format(totalAvailableRows)} calls (before ${fullDayFormat.format(new Date(oldestLoadedMs))})`
       : `! range incomplete — loaded newest ${number.format(data.length)} of ${number.format(totalAvailableRows)} rows; usage before ${fullDayFormat.format(new Date(oldestLoadedMs))} is not shown`;
   }
 
@@ -734,7 +807,7 @@
             </div>
             <div class="ledger-col">
               <div>${escapeHtml(compactTokens(thread.tokens))}</div>
-              <div class="col-sub">${number.format(thread.calls.length)} calls</div>
+              <div class="col-sub">${number.format(thread.callCount)} calls</div>
             </div>
             <div class="ledger-col">
               <div class="cache-value" data-level="${cacheLevel(thread.cacheRatio)}">${pctRound(thread.cacheRatio)}</div>
@@ -846,6 +919,27 @@
     return 'No action needed. Expand calls only if a signal is unclear.';
   }
   function renderThreadRail(scope, thread) {
+    if (!thread.calls.length) {
+      overviewRailEl.innerHTML = `
+        <div class="rail-panel">
+          <div class="rail-head">
+            <h2 class="panel-title"><span class="panel-title-dim">:: </span>thread</h2>
+            <button type="button" class="rail-close" data-action="close-thread">✕ close</button>
+          </div>
+          <div class="rail-body">
+            <div class="drill-name">${escapeHtml(thread.label)}</div>
+            <div class="drill-stats">
+              <div><span class="stat-label">spend</span><br><b>${escapeHtml(money(thread.cost))}</b></div>
+              <div><span class="stat-label">tokens</span><br><b>${escapeHtml(compactTokens(thread.tokens))}</b></div>
+              <div><span class="stat-label">cache reuse</span><br><b class="stat-value" data-level="${cacheLevel(thread.cacheRatio)}">${pctRound(thread.cacheRatio)}</b></div>
+              <div><span class="stat-label">calls</span><br><b>${number.format(thread.callCount)}</b></div>
+            </div>
+            <div class="rail-empty">&gt; this thread's calls are older than the loaded slice — totals above are complete, but the per-call timeline is unavailable</div>
+          </div>
+        </div>
+      `;
+      return;
+    }
     const chrono = thread.calls.slice().sort(chronological);
     // Cumulative context-growth sparkline: main-line calls only.
     const mainCalls = chrono.filter(call => !isSubagent(call) && !isAutoReview(call));
@@ -942,7 +1036,7 @@
           </div>
           ${relationsBlock}
           <div class="rail-section">
-            <div class="rail-section-title">timeline · oldest → newest</div>
+            <div class="rail-section-title">timeline · oldest → newest${thread.callCount > chrono.length ? escapeHtml(` · newest ${number.format(chrono.length)} of ${number.format(thread.callCount)} calls`) : ''}</div>
             <div class="timeline">${timelineRows}</div>
           </div>
           <button type="button" class="rail-action-btn" data-action="open-calls">&gt; open in calls view</button>
@@ -988,7 +1082,9 @@
     state.page = page;
     const startIndex = (page - 1) * CALLS_PAGE_SIZE;
     const visible = sorted.slice(startIndex, startIndex + CALLS_PAGE_SIZE);
-    callsCaptionEl.textContent = `${number.format(sorted.length)} calls · sorted by ${state.sortKey} ${direction === 'desc' ? '↓' : '↑'}`;
+    callsCaptionEl.textContent = scope.aggregates && scope.aggregates.calls > sorted.length
+      ? `newest ${number.format(sorted.length)} of ${number.format(scope.aggregates.calls)} calls · sorted by ${state.sortKey} ${direction === 'desc' ? '↓' : '↑'}`
+      : `${number.format(sorted.length)} calls · sorted by ${state.sortKey} ${direction === 'desc' ? '↓' : '↑'}`;
     renderDayChip(callsDayChipEl, scope);
     callsSectionEl.querySelectorAll('.sort-btn[data-sort-key]').forEach(button => {
       const key = button.dataset.sortKey;
