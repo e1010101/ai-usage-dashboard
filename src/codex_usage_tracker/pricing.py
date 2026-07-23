@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from codex_usage_tracker.costing import (
+    annotate_rollups_with_cost,
     annotate_rows_with_efficiency,
     efficiency_flags,
     estimate_cache_savings_usd,
@@ -66,6 +67,7 @@ __all__ = [
     "PricingConfig",
     "PricingParseError",
     "PricingUpdateResult",
+    "annotate_rollups_with_cost",
     "annotate_rows_with_efficiency",
     "efficiency_flags",
     "estimate_cache_savings_usd",

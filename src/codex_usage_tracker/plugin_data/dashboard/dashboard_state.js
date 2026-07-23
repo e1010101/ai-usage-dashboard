@@ -7,6 +7,7 @@
   const STATE_KEYS = [
     'view',
     'q',
+    'tokens',
     'date',
     'from',
     'to',
@@ -38,6 +39,7 @@
     return {
       view: ALLOWED_VIEWS.has(params.get('view')) ? params.get('view') : 'overview',
       search: clean(params.get('q')),
+      tokensMetric: params.get('tokens') === 'uncached' ? 'uncached' : 'all',
       range: ALLOWED_RANGES.has(range) ? range : 'this-week',
       customStart: clean(params.get('from')),
       customEnd: clean(params.get('to')),
@@ -61,6 +63,7 @@
     STATE_KEYS.forEach(key => params.delete(key));
     set(params, 'view', state.view === 'calls' ? 'calls' : '');
     set(params, 'q', state.search);
+    set(params, 'tokens', state.tokensMetric === 'uncached' ? 'uncached' : '');
     set(params, 'date', ALLOWED_RANGES.has(state.range) && state.range !== 'this-week' ? state.range : '');
     set(params, 'from', state.range === 'custom' ? state.customStart : '');
     set(params, 'to', state.range === 'custom' ? state.customEnd : '');

@@ -39,6 +39,7 @@ from codex_usage_tracker.store import (
     query_most_expensive_calls,
     query_session_usage,
     query_summary,
+    query_usage_rollups,
     rebuild_usage_index,
     refresh_metadata,
     refresh_usage_index,
@@ -1915,7 +1916,10 @@ def test_dashboard_defaults_to_this_week_without_load_cap_control(tmp_path: Path
     assert "range: ALLOWED_RANGES.has(range) ? range : 'this-week'" in dashboard_state_js
     assert 'id="loadLimit"' not in dashboard
     assert "updateLoadLimitControl" not in dashboard_js
-    assert "limit: 'all'" in dashboard_js
+    # Refresh must stay bounded: totals come from rollups, not an unbounded row fetch.
+    assert "limit: 'all'" not in dashboard_js
+    assert "payloadRollups" in dashboard_js
+    assert '"usage_rollups"' in dashboard
     assert "params.set('since'" in dashboard_js
     assert "params.set('until'" in dashboard_js
     # History scope has no UI control; the payload defaults to all history.
@@ -2293,3 +2297,110 @@ def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
         "".join(json.dumps(row) + "\n" for row in rows),
         encoding="utf-8",
     )
+
+
+def _rollup_event(record_id: str, event_timestamp: str, **overrides: object) -> UsageEvent:
+    base = UsageEvent(
+        record_id=record_id,
+        session_id="session-rollup",
+        thread_name="Rollup thread",
+        session_updated_at="2026-07-01T00:00:00Z",
+        event_timestamp=event_timestamp,
+        source_file="/tmp/synthetic/rollups.jsonl",
+        line_number=1,
+        source_provider="openai",
+        source_app="codex",
+        source_format="codex-jsonl-v1",
+        provider_request_id=None,
+        turn_id=None,
+        turn_timestamp=event_timestamp,
+        cwd="/tmp/project",
+        model="gpt-5.5",
+        effort="high",
+        current_date="2026-07-01",
+        timezone="UTC",
+        thread_source="user",
+        subagent_type=None,
+        agent_role=None,
+        agent_nickname=None,
+        parent_session_id=None,
+        parent_thread_name=None,
+        parent_session_updated_at=None,
+        model_context_window=200000,
+        cache_creation_input_tokens=0,
+        input_tokens=1000,
+        cached_input_tokens=600,
+        output_tokens=50,
+        reasoning_output_tokens=5,
+        total_tokens=1050,
+        cumulative_input_tokens=1000,
+        cumulative_cached_input_tokens=600,
+        cumulative_output_tokens=50,
+        cumulative_reasoning_output_tokens=5,
+        cumulative_total_tokens=1050,
+    )
+    return replace(base, **overrides) if overrides else base
+
+
+def test_query_usage_rollups_buckets_hourly_and_filters(tmp_path: Path) -> None:
+    db_path = tmp_path / "usage.sqlite3"
+    upsert_usage_events(
+        [
+            _rollup_event("rollup-1", "2026-07-01T10:05:00.000Z"),
+            _rollup_event("rollup-2", "2026-07-01T10:55:00.000Z"),
+            _rollup_event(
+                "rollup-3",
+                "2026-07-01T11:05:00.000Z",
+                source_provider="anthropic",
+                source_app="claude-code",
+                model="claude-sonnet-5",
+                effort=None,
+            ),
+        ],
+        db_path=db_path,
+    )
+
+    rollups = query_usage_rollups(db_path=db_path)
+    windowed = query_usage_rollups(db_path=db_path, since="2026-07-01T11:00:00Z")
+
+    assert [
+        (group["bucket_utc_hour"], group["source_provider"], group["model"], group["event_count"])
+        for group in rollups
+    ] == [
+        ("2026-07-01T10", "openai", "gpt-5.5", 2),
+        ("2026-07-01T11", "anthropic", "claude-sonnet-5", 1),
+    ]
+    first = rollups[0]
+    assert first["input_tokens"] == 2000
+    assert first["cached_input_tokens"] == 1200
+    assert first["output_tokens"] == 100
+    assert first["reasoning_output_tokens"] == 10
+    assert first["total_tokens"] == 2100
+    assert [group["bucket_utc_hour"] for group in windowed] == ["2026-07-01T11"]
+
+
+def test_dashboard_payload_rollups_stay_complete_when_rows_truncated(tmp_path: Path) -> None:
+    db_path = tmp_path / "usage.sqlite3"
+    pricing_path = _write_pricing(tmp_path / "pricing.json")
+    upsert_usage_events(
+        [
+            _rollup_event("rollup-1", "2026-07-01T10:05:00.000Z"),
+            _rollup_event("rollup-2", "2026-07-02T10:05:00.000Z"),
+            _rollup_event("rollup-3", "2026-07-03T10:05:00.000Z"),
+        ],
+        db_path=db_path,
+    )
+
+    payload = dashboard_payload(db_path=db_path, limit=1, pricing_path=pricing_path)
+
+    assert len(payload["rows"]) == 1
+    assert payload["usage_rollups_bucket"] == "utc-hour"
+    rollups = payload["usage_rollups"]
+    assert len(rollups) == 3
+    assert sum(group["total_tokens"] for group in rollups) == 3150
+    assert sum(group["event_count"] for group in rollups) == 3
+    expected_cost = (400 * 2.0 + 600 * 0.5 + 50 * 10.0) / 1_000_000
+    for group in rollups:
+        assert group["pricing_model"] == "gpt-5.5"
+        assert group["pricing_estimated"] is False
+        assert abs(group["estimated_cost_usd"] - expected_cost) < 1e-12

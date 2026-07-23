@@ -10,6 +10,7 @@
   } = dashboardFormat;
   const {
     payloadRows,
+    payloadRollups,
     payloadLimit,
     usageCreditValue,
     isAutoReview,
@@ -23,6 +24,7 @@
   const initialState = stateManager ? stateManager.read() : {};
 
   let data = payloadRows(initialPayload);
+  let rollups = [];
   let pricingSource = initialPayload.pricing_source || {};
   let pricingSnapshotWarning = initialPayload.pricing_snapshot_warning || '';
   let providerLimitSnapshots = initialPayload.provider_limit_snapshots || {};
@@ -45,6 +47,13 @@
       if (!Number.isNaN(ts) && (oldestLoadedMs === null || ts < oldestLoadedMs)) oldestLoadedMs = ts;
     });
   }
+  function indexRollups(nextPayload) {
+    rollups = payloadRollups(nextPayload).map(group => {
+      const tsMs = Date.parse(`${group.bucket_utc_hour}:00:00.000Z`);
+      return Number.isNaN(tsMs) ? null : { ...group, tsMs };
+    }).filter(Boolean);
+  }
+  indexRollups(initialPayload);
 
   /* ---- Elements ---- */
   const el = id => document.getElementById(id);
@@ -64,6 +73,7 @@
   const heroCostDeltaEl = el('heroCostDelta');
   const heroTokensEl = el('heroTokens');
   const heroTokensDeltaEl = el('heroTokensDelta');
+  const tokensMetricToggleEl = el('tokensMetricToggle');
   const heroCallsEl = el('heroCalls');
   const heroThreadsEl = el('heroThreads');
   const heroCreditsEl = el('heroCredits');
@@ -103,6 +113,7 @@
     customEnd: initialState.customEnd || '',
     provider: initialState.provider || '',
     search: initialState.search || '',
+    tokensMetric: initialState.tokensMetric === 'uncached' ? 'uncached' : 'all',
     showFilters: false,
     fModel: initialState.fModel || '',
     fEffort: initialState.fEffort || '',
@@ -121,6 +132,7 @@
     return {
       view: state.view,
       search: state.search,
+      tokensMetric: state.tokensMetric,
       range: state.range,
       customStart: state.customStart,
       customEnd: state.customEnd,
@@ -163,6 +175,19 @@
   }
   function sum(rows, field) {
     return rows.reduce((total, row) => total + (Number(row[field]) || 0), 0);
+  }
+  function eventTimeMs(item) {
+    return item.tsMs !== undefined ? item.tsMs : Date.parse(item.event_timestamp);
+  }
+  function tokensOf(item) {
+    if (state.tokensMetric !== 'uncached') return Number(item.total_tokens) || 0;
+    const uncached = item.uncached_input_tokens !== undefined && item.uncached_input_tokens !== null
+      ? Number(item.uncached_input_tokens) || 0
+      : Math.max((Number(item.input_tokens) || 0) - (Number(item.cached_input_tokens) || 0), 0);
+    return uncached + (Number(item.output_tokens) || 0);
+  }
+  function sumTokens(items) {
+    return items.reduce((total, item) => total + tokensOf(item), 0);
   }
   function cacheLevel(ratio) {
     return (Number(ratio) || 0) < 0.3 ? 'warn' : 'ok';
@@ -319,7 +344,7 @@
   function buildChart(chartRows, win) {
     const todayMs = win.todayMs;
     const oldest = chartRows.length
-      ? localDay(new Date(Math.min(...chartRows.map(row => Date.parse(row.event_timestamp) || todayMs)))).getTime()
+      ? localDay(new Date(Math.min(...chartRows.map(row => eventTimeMs(row) || todayMs)))).getTime()
       : todayMs;
     const chartStart = win.startMs !== null ? win.startMs : oldest;
     const chartEnd = win.endMs !== null ? Math.min(win.endMs, todayMs + DAY_MS) : todayMs + DAY_MS;
@@ -354,7 +379,7 @@
       let openai = 0;
       let anthropic = 0;
       chartRows.forEach(row => {
-        const ts = Date.parse(row.event_timestamp);
+        const ts = eventTimeMs(row);
         if (!(ts >= bucket.start && ts < bucket.end)) return;
         const cost = Number(row.estimated_cost_usd) || 0;
         if (row.source_provider === 'anthropic') anthropic += cost;
@@ -370,42 +395,70 @@
   function computeScope() {
     const win = currentWindow();
     const term = state.search.trim().toLowerCase();
-    const inWindow = row => {
+    const inWindow = item => {
       if (win.invalid) return false;
-      const ts = Date.parse(row.event_timestamp);
+      const ts = eventTimeMs(item);
       if (Number.isNaN(ts)) return false;
       if (win.startMs !== null && ts < win.startMs) return false;
       if (win.endMs !== null && ts >= win.endMs) return false;
       return true;
     };
+    let priorStart = null;
+    if (win.startMs !== null && !win.invalid) {
+      const endEffective = win.endMs !== null ? win.endMs : Date.now();
+      priorStart = win.startMs - (endEffective - win.startMs);
+    }
     const baseRows = data.filter(row => (!state.provider || row.source_provider === state.provider) && inWindow(row));
     const scopedRows = baseRows.filter(row => advancedMatches(row, term));
+
+    // Search terms and thread-type filters only exist on raw rows; every other
+    // filter maps onto rollup dimensions, so totals stay exact even when the
+    // loaded row slice is truncated.
+    const rollupsUsable = rollups.length > 0 && !term && !state.fThreadType && !win.invalid;
+    const groupMatches = group => (!state.provider || group.source_provider === state.provider)
+      && (!state.fModel || group.model === state.fModel)
+      && (!state.fEffort || (group.effort || 'none') === state.fEffort)
+      && (!state.fConfidence || confidenceOf(group) === state.fConfidence);
+    const scopedGroups = rollupsUsable ? rollups.filter(groupMatches) : [];
+    const windowGroups = scopedGroups.filter(inWindow);
+
     // Chart ignores the day filter itself so all bars stay comparable.
-    const chart = buildChart(scopedRows, win);
+    const chart = buildChart(rollupsUsable ? windowGroups : scopedRows, win);
     let dayBucket = null;
     if (state.dayKey) {
       dayBucket = chart.buckets.find(bucket => bucket.key === state.dayKey) || null;
       if (!dayBucket) state.dayKey = '';
     }
-    const rows = dayBucket
-      ? scopedRows.filter(row => {
-        const ts = Date.parse(row.event_timestamp);
-        return ts >= dayBucket.start && ts < dayBucket.end;
-      })
-      : scopedRows;
+    const inDayBucket = item => {
+      const ts = eventTimeMs(item);
+      return ts >= dayBucket.start && ts < dayBucket.end;
+    };
+    const rows = dayBucket ? scopedRows.filter(inDayBucket) : scopedRows;
     let priorRows = [];
-    if (win.startMs !== null && !win.invalid) {
-      const endEffective = win.endMs !== null ? win.endMs : Date.now();
-      const priorStart = win.startMs - (endEffective - win.startMs);
+    if (priorStart !== null) {
       priorRows = data.filter(row => {
         if (state.provider && row.source_provider !== state.provider) return false;
         const ts = Date.parse(row.event_timestamp);
         return ts >= priorStart && ts < win.startMs;
       }).filter(row => advancedMatches(row, term));
     }
+    let aggregates = null;
+    if (rollupsUsable) {
+      const heroGroups = dayBucket ? windowGroups.filter(inDayBucket) : windowGroups;
+      const priorGroups = priorStart !== null
+        ? scopedGroups.filter(group => group.tsMs >= priorStart && group.tsMs < win.startMs)
+        : [];
+      aggregates = {
+        cost: sum(heroGroups, 'estimated_cost_usd'),
+        tokens: sumTokens(heroGroups),
+        calls: sum(heroGroups, 'event_count'),
+        priorCost: sum(priorGroups, 'estimated_cost_usd'),
+        priorTokens: sumTokens(priorGroups),
+      };
+    }
     const cost = sum(rows, 'estimated_cost_usd');
     const threads = buildThreads(rows, cost);
-    return { win, term, baseRows, rows, priorRows, chart, dayBucket, threads, cost };
+    return { win, term, baseRows, rows, priorRows, chart, dayBucket, threads, cost, aggregates };
   }
 
   /* ---- Prompt line ---- */
@@ -497,7 +550,12 @@
   /* ---- Answer strip ---- */
   function heroSentenceText(scope) {
     const top = scope.threads[0];
-    if (!top) return 'No usage recorded in this range.';
+    if (!top) {
+      if (scope.aggregates && scope.aggregates.calls > 0) {
+        return 'Totals cover the full range; per-thread attribution is only available for the newest loaded calls.';
+      }
+      return 'No usage recorded in this range.';
+    }
     const share = pctRound(scope.cost ? top.cost / scope.cost : 0);
     const diagnostic = top.maxContext >= 0.6
       ? 'That thread is also carrying heavy context; a fresh thread would cut per-turn cost.'
@@ -508,19 +566,28 @@
   }
   function renderAnswerStrip(scope) {
     rangeNounEl.textContent = rangeNounText();
-    const tokens = sum(scope.rows, 'total_tokens');
-    const priorCost = sum(scope.priorRows, 'estimated_cost_usd');
-    const priorTokens = sum(scope.priorRows, 'total_tokens');
+    const agg = scope.aggregates;
+    const cost = agg ? agg.cost : scope.cost;
+    const tokens = agg ? agg.tokens : sumTokens(scope.rows);
+    const calls = agg ? agg.calls : scope.rows.length;
+    const priorCost = agg ? agg.priorCost : sum(scope.priorRows, 'estimated_cost_usd');
+    const priorTokens = agg ? agg.priorTokens : sumTokens(scope.priorRows);
     const creditTotal = scope.rows.reduce((total, row) => {
       const value = usageCreditValue(row);
       return value === null ? total : total + value;
     }, 0);
-    heroCostEl.textContent = money(scope.cost);
+    heroCostEl.textContent = money(cost);
     heroTokensEl.textContent = number.format(tokens);
-    heroCallsEl.textContent = number.format(scope.rows.length);
+    heroCallsEl.textContent = number.format(calls);
     heroThreadsEl.textContent = number.format(scope.threads.length);
+    if (tokensMetricToggleEl) {
+      tokensMetricToggleEl.textContent = state.tokensMetric === 'uncached' ? 'tokens · uncached' : 'tokens · all';
+      tokensMetricToggleEl.title = state.tokensMetric === 'uncached'
+        ? 'Showing uncached input + output tokens only (closest to provider in-app counters). Click to include cache reads.'
+        : 'Showing every token processed, including cache reads. Click to show uncached input + output only.';
+    }
     heroCreditsEl.textContent = creditTotal ? `${credits(creditTotal)} Codex credits used` : '';
-    const costDelta = deltaInfo(scope.cost, priorCost);
+    const costDelta = deltaInfo(cost, priorCost);
     heroCostDeltaEl.textContent = costDelta.text;
     heroCostDeltaEl.dataset.trend = costDelta.trend;
     const tokensDelta = deltaInfo(tokens, priorTokens);
@@ -559,7 +626,9 @@
       return;
     }
     coverageNoteEl.hidden = false;
-    coverageNoteEl.textContent = `! range incomplete — loaded newest ${number.format(data.length)} of ${number.format(totalAvailableRows)} rows; usage before ${fullDayFormat.format(new Date(oldestLoadedMs))} is not shown`;
+    coverageNoteEl.textContent = scope.aggregates
+      ? `i totals & chart cover the full range; thread and call lists show the newest ${number.format(data.length)} of ${number.format(totalAvailableRows)} calls (before ${fullDayFormat.format(new Date(oldestLoadedMs))} not listed)`
+      : `! range incomplete — loaded newest ${number.format(data.length)} of ${number.format(totalAvailableRows)} rows; usage before ${fullDayFormat.format(new Date(oldestLoadedMs))} is not shown`;
   }
 
   function limitLevel(percent) {
@@ -1208,6 +1277,7 @@
   }
   function applyDashboardPayload(nextPayload) {
     data = payloadRows(nextPayload);
+    indexRollups(nextPayload);
     pricingSource = nextPayload.pricing_source || {};
     pricingSnapshotWarning = nextPayload.pricing_snapshot_warning || '';
     providerLimitSnapshots = nextPayload.provider_limit_snapshots || {};
@@ -1242,9 +1312,10 @@
     refreshInFlight = true;
     updateLiveStatus(manual ? 'Refreshing' : 'Checking', manual ? 'Refreshing local usage index...' : 'Checking for new usage...');
     try {
+      // Rollups carry complete totals for the window, so the raw-row slice can
+      // stay at the server's default limit instead of an unbounded fetch.
       const params = new URLSearchParams({
         refresh: '1',
-        limit: 'all',
         include_archived: includeArchived ? '1' : '0',
         _: String(Date.now()),
       });
@@ -1418,6 +1489,11 @@
   filtersToggleEl.addEventListener('click', () => {
     setState({ showFilters: !state.showFilters });
   });
+  if (tokensMetricToggleEl) {
+    tokensMetricToggleEl.addEventListener('click', () => {
+      setState({ tokensMetric: state.tokensMetric === 'uncached' ? 'all' : 'uncached' });
+    });
+  }
   filtersPopoverEl.addEventListener('click', event => {
     const clear = event.target.closest('[data-action="clear-filters"]');
     if (clear) {
