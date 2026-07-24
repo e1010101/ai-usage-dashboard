@@ -645,6 +645,20 @@ def query_dashboard_events(
         return [_row_to_dict(row) for row in rows]
 
 
+# Mirrors the dashboard's client-side isAutoReview/isSubagent classification so
+# thread-type filters can be answered from rollups without raw rows.
+_THREAD_TYPE_SQL = """
+                CASE
+                    WHEN usage_events.model = 'codex-auto-review'
+                        OR usage_events.subagent_type = 'guardian' THEN 'auto-review'
+                    WHEN usage_events.thread_source = 'subagent'
+                        OR usage_events.subagent_type IS NOT NULL
+                        OR usage_events.parent_session_id IS NOT NULL THEN 'spawned'
+                    ELSE 'parent'
+                END
+"""
+
+
 def query_usage_rollups(
     db_path: Path = DEFAULT_DB_PATH,
     since: str | None = None,
@@ -660,6 +674,7 @@ def query_usage_rollups(
     where_clause, params = _usage_where_clause(
         since=since,
         until=until,
+        table_alias="usage_events",
         include_archived=include_archived,
     )
     with connect(db_path) as conn:
@@ -667,23 +682,110 @@ def query_usage_rollups(
         rows = conn.execute(
             f"""
             SELECT
-                substr(event_timestamp, 1, 13) AS bucket_utc_hour,
-                coalesce(source_provider, 'unknown provider') AS source_provider,
-                coalesce(source_app, 'unknown app') AS source_app,
-                model,
-                effort,
+                substr(usage_events.event_timestamp, 1, 13) AS bucket_utc_hour,
+                coalesce(usage_events.source_provider, 'unknown provider') AS source_provider,
+                coalesce(usage_events.source_app, 'unknown app') AS source_app,
+                usage_events.model,
+                usage_events.effort,
+                {_THREAD_TYPE_SQL} AS thread_type,
                 COUNT(*) AS event_count,
-                SUM(input_tokens) AS input_tokens,
-                SUM(cached_input_tokens) AS cached_input_tokens,
-                SUM(output_tokens) AS output_tokens,
-                SUM(reasoning_output_tokens) AS reasoning_output_tokens,
-                SUM(total_tokens) AS total_tokens
+                SUM(usage_events.input_tokens) AS input_tokens,
+                SUM(usage_events.cached_input_tokens) AS cached_input_tokens,
+                SUM(usage_events.output_tokens) AS output_tokens,
+                SUM(usage_events.reasoning_output_tokens) AS reasoning_output_tokens,
+                SUM(usage_events.total_tokens) AS total_tokens
             FROM usage_events
             {where_clause}
-            GROUP BY bucket_utc_hour, source_provider, source_app, model, effort
-            ORDER BY bucket_utc_hour, source_provider, source_app, model, effort
+            GROUP BY bucket_utc_hour, source_provider, source_app,
+                usage_events.model, usage_events.effort, thread_type
+            ORDER BY bucket_utc_hour, source_provider, source_app,
+                usage_events.model, usage_events.effort, thread_type
             """,
             params,
+        )
+        return [_row_to_dict(row) for row in rows]
+
+
+def query_thread_session_groups(
+    db_path: Path = DEFAULT_DB_PATH,
+    since: str | None = None,
+    until: str | None = None,
+    include_archived: bool = True,
+) -> list[dict[str, Any]]:
+    """Return hourly per-session groups carrying thread-attachment fields.
+
+    Groups keep every column the thread-attachment inference needs so
+    ``threads.build_thread_rollups`` can attach and reduce them without raw
+    rows. ``event_timestamp`` is the group minimum, which is precise enough for
+    the nearest-in-time auto-review matching.
+    """
+
+    where_clause, params = _usage_where_clause(
+        since=since,
+        until=until,
+        table_alias="usage_events",
+        include_archived=include_archived,
+    )
+    parent_where_clause, parent_params = _usage_where_clause(include_archived=include_archived)
+    parent_thread_filter = (
+        f"{parent_where_clause} AND thread_name IS NOT NULL"
+        if parent_where_clause
+        else "WHERE thread_name IS NOT NULL"
+    )
+    with connect(db_path) as conn:
+        init_db(conn)
+        rows = conn.execute(
+            f"""
+            SELECT
+                substr(usage_events.event_timestamp, 1, 13) AS bucket_utc_hour,
+                usage_events.session_id,
+                usage_events.thread_name,
+                usage_events.thread_source,
+                usage_events.subagent_type,
+                usage_events.parent_session_id,
+                coalesce(
+                    usage_events.parent_thread_name,
+                    parent_threads.thread_name
+                ) AS resolved_parent_thread_name,
+                usage_events.cwd,
+                coalesce(usage_events.source_provider, 'unknown provider') AS source_provider,
+                coalesce(usage_events.source_app, 'unknown app') AS source_app,
+                usage_events.model,
+                usage_events.effort,
+                {_THREAD_TYPE_SQL} AS thread_type,
+                COUNT(*) AS event_count,
+                MIN(usage_events.event_timestamp) AS event_timestamp,
+                SUM(usage_events.input_tokens) AS input_tokens,
+                SUM(usage_events.cached_input_tokens) AS cached_input_tokens,
+                SUM(usage_events.output_tokens) AS output_tokens,
+                SUM(usage_events.reasoning_output_tokens) AS reasoning_output_tokens,
+                SUM(usage_events.total_tokens) AS total_tokens,
+                MAX(
+                    CASE
+                        WHEN usage_events.model_context_window > 0
+                        THEN usage_events.cumulative_total_tokens * 1.0
+                            / usage_events.model_context_window
+                    END
+                ) AS max_context_ratio
+            FROM usage_events
+            LEFT JOIN (
+                SELECT
+                    session_id,
+                    max(thread_name) AS thread_name
+                FROM usage_events
+                {parent_thread_filter}
+                GROUP BY session_id
+            ) AS parent_threads
+            ON usage_events.parent_session_id = parent_threads.session_id
+            {where_clause}
+            GROUP BY bucket_utc_hour, usage_events.session_id, usage_events.thread_name,
+                usage_events.thread_source, usage_events.subagent_type,
+                usage_events.parent_session_id, resolved_parent_thread_name,
+                usage_events.cwd, source_provider, source_app,
+                usage_events.model, usage_events.effort, thread_type
+            ORDER BY bucket_utc_hour, usage_events.session_id
+            """,
+            [*parent_params, *params],
         )
         return [_row_to_dict(row) for row in rows]
 

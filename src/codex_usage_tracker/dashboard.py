@@ -54,11 +54,12 @@ from codex_usage_tracker.store import (
     query_dashboard_event_count,
     query_dashboard_events,
     query_source_summaries,
+    query_thread_session_groups,
     query_usage_record,
     query_usage_rollups,
     refresh_metadata,
 )
-from codex_usage_tracker.threads import annotate_thread_attachments
+from codex_usage_tracker.threads import annotate_thread_attachments, build_thread_rollups
 
 _PAYLOAD_LIMIT_HISTORY_MAX = 500
 
@@ -164,14 +165,27 @@ def dashboard_payload(
         privacy_mode=privacy_mode,
     )
     payload_rows = _compact_dashboard_rows(annotated_rows) if compact_rows else annotated_rows
-    usage_rollups = annotate_rollups_with_cost(
+    usage_rollups = _annotate_rollup_groups(
         query_usage_rollups(
             db_path=db_path,
             since=since,
             until=until,
             include_archived=include_archived,
         ),
-        pricing,
+        pricing=pricing,
+        allowance=allowance,
+    )
+    thread_rollups = _annotate_rollup_groups(
+        build_thread_rollups(
+            query_thread_session_groups(
+                db_path=db_path,
+                since=since,
+                until=until,
+                include_archived=include_archived,
+            )
+        ),
+        pricing=pricing,
+        allowance=allowance,
     )
     allowance_summary = summarize_allowance_usage(annotated_rows, allowance)
     normalized_limit = _normalize_limit(limit)
@@ -203,6 +217,7 @@ def dashboard_payload(
         "rows": payload_rows,
         "rows_compact": compact_rows,
         "usage_rollups": usage_rollups,
+        "thread_rollups": thread_rollups,
         "usage_rollups_bucket": "utc-hour",
         "pricing_configured": pricing.loaded and not pricing.error,
         "pricing_source": pricing.source,
@@ -432,6 +447,36 @@ def _provider_limit_snapshots(
             "error": claude_limits.error,
         },
     }
+
+
+_ROLLUP_CREDIT_FIELDS = ("usage_credits", "usage_credit_confidence")
+
+
+def _annotate_rollup_groups(
+    groups: list[dict[str, Any]],
+    pricing,
+    allowance,
+) -> list[dict[str, Any]]:
+    """Attach exact cost and credit sums to rollup groups, keeping them slim.
+
+    Cost and credit formulas are linear in token components, so annotating the
+    group sums matches summing per-row annotations exactly.
+    """
+
+    annotated = annotate_rows_with_allowance(
+        annotate_rollups_with_cost(groups, pricing),
+        allowance,
+    )
+    slimmed: list[dict[str, Any]] = []
+    for group in annotated:
+        slimmed.append(
+            {
+                key: value
+                for key, value in group.items()
+                if not key.startswith("usage_credit") or key in _ROLLUP_CREDIT_FIELDS
+            }
+        )
+    return slimmed
 
 
 def _annotate_dashboard_rows(

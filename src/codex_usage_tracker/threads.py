@@ -25,6 +25,70 @@ def annotate_thread_attachments(rows: list[dict[str, Any]]) -> list[dict[str, An
     return [_with_thread_attachment(row, candidates) for row in rows]
 
 
+_THREAD_ROLLUP_SUM_FIELDS = (
+    "event_count",
+    "input_tokens",
+    "cached_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+)
+
+
+def build_thread_rollups(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Reduce per-session hourly groups into thread-attached hourly rollups.
+
+    Groups must carry the attachment fields ``annotate_thread_attachments``
+    reads; the session dimension collapses once attachments are resolved.
+    """
+
+    annotated = annotate_thread_attachments(groups)
+    merged: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for group in annotated:
+        key = (
+            group.get("bucket_utc_hour"),
+            group.get("thread_attachment_key"),
+            group.get("source_provider"),
+            group.get("source_app"),
+            group.get("model"),
+            group.get("effort"),
+            group.get("thread_type"),
+        )
+        bucket = merged.get(key)
+        if bucket is None:
+            bucket = {
+                "bucket_utc_hour": group.get("bucket_utc_hour"),
+                "thread_key": group.get("thread_attachment_key"),
+                "thread_label": group.get("thread_attachment_label"),
+                "source_provider": group.get("source_provider"),
+                "source_app": group.get("source_app"),
+                "model": group.get("model"),
+                "effort": group.get("effort"),
+                "thread_type": group.get("thread_type"),
+                "max_context_ratio": None,
+            }
+            bucket.update({field: 0 for field in _THREAD_ROLLUP_SUM_FIELDS})
+            merged[key] = bucket
+        for field in _THREAD_ROLLUP_SUM_FIELDS:
+            bucket[field] += int(group.get(field) or 0)
+        ratio = group.get("max_context_ratio")
+        if ratio is not None:
+            bucket["max_context_ratio"] = max(
+                float(bucket["max_context_ratio"] or 0.0), float(ratio)
+            )
+    return sorted(
+        merged.values(),
+        key=lambda bucket: (
+            bucket.get("bucket_utc_hour") or "",
+            bucket.get("thread_key") or "",
+            bucket.get("source_provider") or "",
+            bucket.get("model") or "",
+            bucket.get("effort") or "",
+            bucket.get("thread_type") or "",
+        ),
+    )
+
+
 def _with_thread_attachment(
     row: dict[str, Any],
     candidates: dict[str, dict[str, Any]],
