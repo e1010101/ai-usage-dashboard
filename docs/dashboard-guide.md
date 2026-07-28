@@ -70,9 +70,12 @@ The header is one compact row of controls, echoed by a decorative prompt line (`
 - **Search** filters rows by case-insensitive substring across thread, parent thread, model, project, branch, cwd, and source app. Press `/` to focus it.
 - **Range presets** — `this week · 7d · month · 30d · all · custom` — control the time window. `this week` starts on Monday, `month` is the calendar month, and `7d`/`30d` are rolling windows including today. `custom` shows start/end date inputs; either end may be left open.
 - The **provider switcher** — `[ overview ] [ codex ] [ claude code ]` — scopes everything to one provider or shows both together.
+- **`rows`** selects how many individual calls to load — `5,000` (default), `15,000`, `50,000`, or `all`. This only affects row-backed features: the calls table, per-call timelines, and branch/path search. Spend totals, the chart, the ledger, and the breakdown always cover the whole range from server-side rollups, whatever this is set to. Roughly 1.6 KB of JSON per call, so a large index is genuinely heavy above 50,000; choices past that ask for confirmation and state the estimated size first. A server started with a custom `--limit` shows that value as an extra option.
 - **`[ + filters ]`** opens a popover with chip rows for model, reasoning effort, pricing confidence (exact / estimated / unpriced), and thread type (parent / spawned / auto-review). The label shows the active-filter count while closed, and a `> clear filters` link resets them.
 - The `[ live ]` chip shows refresh status (`live`, `paused`, `static`, `refresh error`); clicking it pauses or resumes live refresh. Details such as the exact refresh time live in hover titles.
-- The URL tracks the view, range, provider, search, advanced filters, day selection, sort, pages, and selected thread or call, so an investigation can be reopened or shared by copying the address.
+- The URL tracks the view, range, provider, search, row limit, advanced filters, day selection, sort, pages, breakdown grouping, and selected thread, group, or call, so an investigation can be reopened or shared by copying the address.
+
+Search terms that name a thread, model, project, or provider are answered from complete rollups, so totals stay exact for the whole range while searching. Terms that only match a git branch or cwd fall back to the loaded row slice, and the coverage note under the chart says so.
 
 ## The Answer Strip
 
@@ -97,11 +100,25 @@ The right rail shows **`:: needs attention`** when nothing is selected: at most 
 Drilling into a thread replaces the rail with **`:: thread`**:
 
 - spend, tokens, cache reuse, and max context stats (colored by 35%/60% context thresholds)
+- a **cost composition** section splitting spend into fresh input, cache read, and output — each with its share — plus cost per call, cost per 1M tokens, unpriced cache-write tokens, and the model mix
 - a **next action** callout from the last call's recommendation or derived from context/cache state
 - a **context growth** sparkline of the session's cumulative tokens across main-line calls
 - **spawned work**: per-subagent and auto-review groups with call counts, tokens, and cost
 - a **timeline** of every call, oldest to newest, with model, source kind, tokens, cost, cache, and a context-use meter
 - `> open in calls view` to jump to the dense table
+
+## Breakdown — What The Spend Is Made Of
+
+Switch to `breakdown` for a grouped cost table, ten groups per page. It is built from server-side thread rollups, so its total always reconciles with the spend in the answer strip even when only a slice of raw rows is loaded; the caption says `complete for this range` when that holds.
+
+- **`group by`** chips regroup the same range by `model · project · thread · effort · thread type · provider · day`.
+- Columns: group, spend, share with a cost-composition bar, calls, tokens, cache reuse, `$/call`, and `$/Mtok`. Every numeric header sorts; `cache` defaults ascending (worst first), the rest descending.
+- The **composition bar** splits each group's spend into fresh (uncached) input in purple, cache reads in cyan, and output in green. Hovering shows the dollar amount and share of each. Groups whose models have no configured price show `n/a` instead.
+- A **totals row** under the table restates range spend, calls, tokens, the three cost components, and Codex credits.
+- Clicking a group opens **`:: group details`** with its spend and share, cost per call, cost per 1M tokens, cache reuse, the full cost split, and a token split including unpriced cache-write tokens. `> filter the dashboard to this group` applies the group as a real filter where one exists (model, effort, thread type, day, provider) and as a search term otherwise.
+- **`> copy csv`** copies the whole sorted breakdown — not just the visible page — to the clipboard, including the per-component cost columns.
+
+Cache-write (cache creation) tokens are reported but not billed: the local pricing schema carries no cache-write rate, so they are shown as `unpriced` rather than folded into spend at a guessed rate.
 
 ## Calls View
 
@@ -109,7 +126,7 @@ Switch to `calls` (or press the view toggle in any panel header) for the dense p
 
 - Columns: time, thread, model, effort, tokens, cost (with `*` for estimated and `·unpriced` markers, Codex credits under it), cache %, and the first efficiency flag.
 - `time`, `tokens`, `cost`, and `cache` headers sort; `cache` defaults ascending (worst first), the others descending. Click again to reverse.
-- Click a row to open **`:: call details`**: cost/usage/context signals first (est. cost, Codex credits with rate confidence, cache ratio, uncached or direct input, context use, pricing status), then a next-action callout, a thread narrative (thread, project, source, parent thread, timestamp), and collapsed `token and pricing breakdown` and `raw identifiers & source` sections.
+- Click a row to open **`:: call details`**: cost/usage/context signals first (est. cost, Codex credits with rate confidence, cache ratio, uncached or direct input, context use, pricing status), then a next-action callout, a thread narrative (thread, project, source, parent thread, timestamp), and collapsed `token and pricing breakdown` and `raw identifiers & source` sections. The breakdown section opens with the call's cost split into uncached input, cached input, and output, each with its share of that call's cost.
 - `> open thread in overview` jumps back to the ledger with that call's thread selected.
 - When rows were served in compact form, the remaining aggregate fields load on demand through `/api/usage-row`.
 - When served from localhost, `/api/usage` accepts `limit`, `offset`, `since`, and `until` so automation can page aggregate rows or fetch an exact time window.

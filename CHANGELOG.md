@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a dashboard `breakdown` view grouping range cost by model, project, thread, effort, thread type, provider, or day, with cost composition bars, unit rates, a totals row, drill-in details, and CSV export.
+- Add a header `rows` picker so the loaded per-call slice can be raised to 15,000, 50,000, or all rows, with the transfer cost stated up front and confirmed before heavy loads.
+- Keep spend totals exact while searching by answering thread/model/project/provider terms from complete rollups instead of the truncated row slice.
+- Add per-component cost estimates (uncached input, cached input, output) to rollups, dashboard rows, thread details, and call details.
+- Add project identity and cache-creation token sums to hourly and thread rollups without exposing raw working-directory paths.
 - Migrate the MCP server to the mcp 2.0 SDK (`mcp.server.MCPServer` replaces the removed `mcp.server.fastmcp.FastMCP`) and require `mcp>=2.0.0`.
 - Add tested JSON contract validation for stable CLI and MCP payload schemas.
 - Add schema markers to doctor, pricing coverage, MCP dashboard/export/config, and opt-in context payloads.

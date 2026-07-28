@@ -104,10 +104,12 @@ ai-usage-dashboard serve-dashboard --source all --open</code></pre>
       <li><strong>Search</strong> filters rows by case-insensitive substring across thread, parent thread, model, project, branch, cwd, and source app. Press <code>/</code> to focus it.</li>
       <li><strong>Range presets</strong> — <code>this week · 7d · month · 30d · all · custom</code> — control the time window. <code>custom</code> shows start/end date inputs; either end may be left open.</li>
       <li>The <strong>provider switcher</strong> — <code>[ overview ] [ codex ] [ claude code ]</code> — scopes everything to one provider or shows both together.</li>
+      <li><strong>rows</strong> selects how many individual calls to load — <code>5,000</code> (default), <code>15,000</code>, <code>50,000</code>, or <code>all</code>. This only affects row-backed features: the calls table, per-call timelines, and branch/path search. Spend totals, the chart, the ledger, and the breakdown always cover the whole range from server-side rollups. At roughly 1.6 KB of JSON per call a large index is genuinely heavy above 50,000, so those choices ask for confirmation and state the estimated size first.</li>
       <li><code>[ + filters ]</code> opens a popover with chip rows for model, reasoning effort, pricing confidence (exact / estimated / unpriced), and thread type (parent / spawned / auto-review).</li>
       <li>The <code>[ live ]</code> chip shows refresh status; clicking it pauses or resumes the 10-second live refresh.</li>
-      <li>The URL tracks the view, range, provider, search, advanced filters, day selection, sort, pages, and selected thread or call, so an investigation can be reopened by copying the address.</li>
+      <li>The URL tracks the view, range, provider, search, row limit, advanced filters, day selection, sort, pages, breakdown grouping, and selected thread, group, or call, so an investigation can be reopened by copying the address.</li>
     </ul>
+    <p>Search terms that name a thread, model, project, or provider are answered from complete rollups, so totals stay exact for the whole range while searching. Terms that only match a git branch or cwd fall back to the loaded row slice, and the coverage note under the chart says so.</p>
 
     <h2>The Answer Strip</h2>
     <p>Three cards under the header answer "where did my spend go this period?" at a glance.</p>
@@ -120,7 +122,19 @@ ai-usage-dashboard serve-dashboard --source all --open</code></pre>
 
     <h2>Overview — Where It Went</h2>
     <p>The dashboard opens in <code>overview</code> view. The main panel is a spend ledger: threads ranked by estimated cost, six per page. Calls are grouped into threads using thread attachments, so subagents and auto-review work fold into their parent thread. Each row shows rank, thread name, a provider chip, at most one signal chip (<code>CONTEXT n%</code>, <code>LOW CACHE</code>, or <code>EST. PRICE</code>), a share-of-spend bar, cost with Codex credits, tokens with call count, and cache reuse.</p>
-    <p>The right rail shows <code>:: needs attention</code> when nothing is selected: at most three cards in priority order — context bloat, low cache reuse, unpriced usage, then estimated pricing — each naming the affected thread and the consequence. Clicking a ledger row replaces the rail with a thread drill-in: spend/tokens/cache/context stats, a next-action callout, a context-growth sparkline of session cumulative tokens, spawned subagent and auto-review work, and a full call timeline with context-use meters. <code>&gt; open in calls view</code> jumps to the dense table.</p>
+    <p>The right rail shows <code>:: needs attention</code> when nothing is selected: at most three cards in priority order — context bloat, low cache reuse, unpriced usage, then estimated pricing — each naming the affected thread and the consequence. Clicking a ledger row replaces the rail with a thread drill-in: spend/tokens/cache/context stats, a cost composition section splitting spend into fresh input, cache read, and output with cost per call and per 1M tokens, a next-action callout, a context-growth sparkline of session cumulative tokens, spawned subagent and auto-review work, and a full call timeline with context-use meters. <code>&gt; open in calls view</code> jumps to the dense table.</p>
+
+    <h2>Breakdown — What The Spend Is Made Of</h2>
+    <p>Switch to <code>breakdown</code> for a grouped cost table, ten groups per page. It is built from server-side thread rollups, so its total always reconciles with the spend in the answer strip even when only a slice of raw rows is loaded; the caption says <code>complete for this range</code> when that holds.</p>
+    <ul>
+      <li><strong><code>group by</code></strong> chips regroup the same range by <code>model · project · thread · effort · thread type · provider · day</code>.</li>
+      <li>Columns: group, spend, share with a cost-composition bar, calls, tokens, cache reuse, <code>$/call</code>, and <code>$/Mtok</code>. Every numeric header sorts; <code>cache</code> defaults ascending (worst first), the rest descending.</li>
+      <li>The <strong>composition bar</strong> splits each group's spend into fresh (uncached) input in purple, cache reads in cyan, and output in green; hovering shows each amount and share. Groups whose models have no configured price show <code>n/a</code>.</li>
+      <li>A <strong>totals row</strong> restates range spend, calls, tokens, the three cost components, and Codex credits.</li>
+      <li>Clicking a group opens <code>:: group details</code> with spend and share, cost per call, cost per 1M tokens, cache reuse, the full cost split, and a token split including unpriced cache-write tokens. <code>&gt; filter the dashboard to this group</code> applies the group as a real filter where one exists and as a search term otherwise.</li>
+      <li><code>&gt; copy csv</code> copies the whole sorted breakdown — not just the visible page — to the clipboard, including the per-component cost columns.</li>
+    </ul>
+    <p>Cache-write (cache creation) tokens are reported but not billed: the local pricing schema carries no cache-write rate, so they are shown as <code>unpriced</code> rather than folded into spend at a guessed rate.</p>
 
     <h2>Calls View</h2>
     <img src="assets/dashboard-calls.png" alt="Calls view showing the dense model-call table and the call details rail.">

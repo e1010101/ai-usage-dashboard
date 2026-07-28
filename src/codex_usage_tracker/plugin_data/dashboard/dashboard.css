@@ -243,6 +243,36 @@ h1 {
   color-scheme: dark;
 }
 .custom-range-arrow { color: var(--dim); font-size: 11px; }
+.rows-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+}
+.rows-label {
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.rows-picker select {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color-scheme: dark;
+  cursor: pointer;
+}
+.rows-picker select:disabled { color: var(--disabled); cursor: default; }
+.rows-picker:focus-within { border-color: var(--border-interactive); }
+.rows-picker select[data-heavy="true"] { color: var(--neon-yellow); }
 .filters-toggle {
   min-height: 34px;
   padding: 4px 12px;
@@ -1050,6 +1080,114 @@ h1 {
   max-width: 100%;
 }
 
+/* ---- Breakdown view ---- */
+.group-by-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.group-by-label {
+  flex: 0 0 auto;
+  margin-right: 4px;
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.breakdown-copy { margin-left: auto; flex: 0 0 auto; }
+.breakdown-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-interactive) var(--panel);
+}
+.breakdown-table { min-width: 720px; }
+.breakdown-head,
+.breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) 84px minmax(120px, 1fr) 62px 70px 58px 74px 78px;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.breakdown-head {
+  padding: 8px 16px;
+  background: var(--panel);
+  color: var(--dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.breakdown-row {
+  cursor: pointer;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  transition: background var(--snap);
+}
+.breakdown-row:hover { background: var(--raised); }
+.breakdown-row[data-selected="true"] {
+  background: var(--raised);
+  box-shadow: inset 2px 0 0 var(--neon-purple);
+}
+.breakdown-rank { color: var(--dim); font-size: 10px; margin-right: 6px; }
+.breakdown-name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.breakdown-share {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.comp-bar {
+  flex: 1 1 auto;
+  display: flex;
+  height: 7px;
+  min-width: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.comp-bar-empty {
+  display: inline-block;
+  height: auto;
+  background: transparent;
+  color: var(--dim);
+  font-size: 10px;
+}
+.comp-seg { height: 100%; }
+.comp-seg[data-kind="uncached"] { background: var(--neon-purple); }
+.comp-seg[data-kind="cached"] { background: var(--neon-cyan); }
+.comp-seg[data-kind="output"] { background: var(--neon-green); }
+.breakdown-totals {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 9px 16px;
+  border-top: 1px solid var(--border-interactive);
+  color: var(--dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.breakdown-totals-label {
+  color: var(--ink);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+}
+
 /* ---- Call details rail ---- */
 .kv-card {
   border: 1px solid var(--line);
@@ -1162,7 +1300,7 @@ h1 {
   .strip-card.accent-purple { grid-column: 1 / -1; }
   .work-section { grid-template-columns: minmax(0, 1fr); }
   .rail { max-height: none; }
-  .ledger-scroll, .calls-scroll { max-height: 420px; }
+  .ledger-scroll, .calls-scroll, .breakdown-scroll { max-height: 420px; }
   .rail-body { max-height: 480px; }
 }
 @media (max-width: 640px) {
@@ -1175,6 +1313,7 @@ h1 {
   .ledger-row { grid-template-columns: 24px minmax(0, 1fr) 82px; }
   .ledger-row .ledger-col:nth-child(4) { display: none; }
   .ledger-row .ledger-col:nth-child(5) { display: none; }
+  .breakdown-copy { margin-left: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

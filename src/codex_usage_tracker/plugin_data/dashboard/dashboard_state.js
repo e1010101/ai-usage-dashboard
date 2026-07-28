@@ -1,13 +1,17 @@
 (function () {
-  const ALLOWED_VIEWS = new Set(['overview', 'calls']);
+  const ALLOWED_VIEWS = new Set(['overview', 'breakdown', 'calls']);
   const ALLOWED_RANGES = new Set(['this-week', 'last-7-days', 'this-month', 'last-30-days', 'all', 'custom']);
   const ALLOWED_PROVIDERS = new Set(['openai', 'anthropic']);
   const ALLOWED_SORTS = new Set(['time', 'tokens', 'cost', 'cache']);
   const ALLOWED_DIRECTIONS = new Set(['asc', 'desc']);
+  const ALLOWED_GROUPS = new Set(['model', 'project', 'thread', 'effort', 'thread_type', 'source', 'day']);
+  const ALLOWED_GROUP_SORTS = new Set(['cost', 'tokens', 'calls', 'cache', 'per_call', 'per_mtok']);
+  const ALLOWED_ROW_LIMITS = new Set(['5000', '15000', '50000', 'all']);
   const STATE_KEYS = [
     'view',
     'q',
     'tokens',
+    'rows',
     'date',
     'from',
     'to',
@@ -19,6 +23,11 @@
     'day',
     'sort',
     'direction',
+    'group',
+    'gsort',
+    'gdir',
+    'gpage',
+    'gsel',
     'page',
     'lpage',
     'thread',
@@ -40,6 +49,12 @@
       view: ALLOWED_VIEWS.has(params.get('view')) ? params.get('view') : 'overview',
       search: clean(params.get('q')),
       tokensMetric: params.get('tokens') === 'uncached' ? 'uncached' : 'all',
+      rowLimit: ALLOWED_ROW_LIMITS.has(params.get('rows')) ? params.get('rows') : '',
+      groupBy: ALLOWED_GROUPS.has(params.get('group')) ? params.get('group') : 'model',
+      groupSort: ALLOWED_GROUP_SORTS.has(params.get('gsort')) ? params.get('gsort') : 'cost',
+      groupDir: ALLOWED_DIRECTIONS.has(params.get('gdir')) ? params.get('gdir') : '',
+      groupPage: positiveInt(params.get('gpage')),
+      selectedGroup: clean(params.get('gsel')),
       range: ALLOWED_RANGES.has(range) ? range : 'this-week',
       customStart: clean(params.get('from')),
       customEnd: clean(params.get('to')),
@@ -61,9 +76,15 @@
   function serialize(state) {
     const params = new URLSearchParams(window.location.search);
     STATE_KEYS.forEach(key => params.delete(key));
-    set(params, 'view', state.view === 'calls' ? 'calls' : '');
+    set(params, 'view', ALLOWED_VIEWS.has(state.view) && state.view !== 'overview' ? state.view : '');
     set(params, 'q', state.search);
     set(params, 'tokens', state.tokensMetric === 'uncached' ? 'uncached' : '');
+    set(params, 'rows', ALLOWED_ROW_LIMITS.has(state.rowLimit) ? state.rowLimit : '');
+    set(params, 'group', ALLOWED_GROUPS.has(state.groupBy) && state.groupBy !== 'model' ? state.groupBy : '');
+    set(params, 'gsort', ALLOWED_GROUP_SORTS.has(state.groupSort) && state.groupSort !== 'cost' ? state.groupSort : '');
+    set(params, 'gdir', ALLOWED_DIRECTIONS.has(state.groupDir) ? state.groupDir : '');
+    set(params, 'gpage', state.groupPage && Number(state.groupPage) > 1 ? String(Math.floor(Number(state.groupPage))) : '');
+    set(params, 'gsel', state.selectedGroup);
     set(params, 'date', ALLOWED_RANGES.has(state.range) && state.range !== 'this-week' ? state.range : '');
     set(params, 'from', state.range === 'custom' ? state.customStart : '');
     set(params, 'to', state.range === 'custom' ? state.customEnd : '');

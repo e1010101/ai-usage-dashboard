@@ -668,7 +668,10 @@ def query_usage_rollups(
     """Return hourly usage rollups independent of the loaded dashboard row slice.
 
     Buckets are UTC hours (``YYYY-MM-DDTHH``) so clients can rebucket into any
-    whole-hour local timezone without a server round-trip.
+    whole-hour local timezone without a server round-trip. ``cwd`` is a grouping
+    dimension so project-level cost breakdowns stay complete when the raw row
+    slice is truncated; callers are expected to map it to project identity and
+    drop the raw path before it reaches a payload.
     """
 
     where_clause, params = _usage_where_clause(
@@ -687,19 +690,21 @@ def query_usage_rollups(
                 coalesce(usage_events.source_app, 'unknown app') AS source_app,
                 usage_events.model,
                 usage_events.effort,
+                coalesce(usage_events.cwd, '') AS cwd,
                 {_THREAD_TYPE_SQL} AS thread_type,
                 COUNT(*) AS event_count,
                 SUM(usage_events.input_tokens) AS input_tokens,
                 SUM(usage_events.cached_input_tokens) AS cached_input_tokens,
+                SUM(usage_events.cache_creation_input_tokens) AS cache_creation_input_tokens,
                 SUM(usage_events.output_tokens) AS output_tokens,
                 SUM(usage_events.reasoning_output_tokens) AS reasoning_output_tokens,
                 SUM(usage_events.total_tokens) AS total_tokens
             FROM usage_events
             {where_clause}
             GROUP BY bucket_utc_hour, source_provider, source_app,
-                usage_events.model, usage_events.effort, thread_type
+                usage_events.model, usage_events.effort, cwd, thread_type
             ORDER BY bucket_utc_hour, source_provider, source_app,
-                usage_events.model, usage_events.effort, thread_type
+                usage_events.model, usage_events.effort, cwd, thread_type
             """,
             params,
         )
@@ -757,6 +762,7 @@ def query_thread_session_groups(
                 MIN(usage_events.event_timestamp) AS event_timestamp,
                 SUM(usage_events.input_tokens) AS input_tokens,
                 SUM(usage_events.cached_input_tokens) AS cached_input_tokens,
+                SUM(usage_events.cache_creation_input_tokens) AS cache_creation_input_tokens,
                 SUM(usage_events.output_tokens) AS output_tokens,
                 SUM(usage_events.reasoning_output_tokens) AS reasoning_output_tokens,
                 SUM(usage_events.total_tokens) AS total_tokens,
