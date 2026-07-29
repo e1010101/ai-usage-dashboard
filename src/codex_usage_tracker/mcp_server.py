@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 from codex_usage_tracker.allowance import write_allowance_template
 from codex_usage_tracker.api_payloads import refresh_result_payload, session_payload
@@ -50,7 +50,7 @@ from codex_usage_tracker.store import (
     refresh_usage_index as refresh_index,
 )
 
-mcp = FastMCP("codex-usage-tracker")
+mcp = MCPServer("codex-usage-tracker")
 
 
 @mcp.tool()
