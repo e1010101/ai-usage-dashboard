@@ -273,6 +273,31 @@ h1 {
 .rows-picker select:disabled { color: var(--disabled); cursor: default; }
 .rows-picker:focus-within { border-color: var(--border-interactive); }
 .rows-picker select[data-heavy="true"] { color: var(--neon-yellow); }
+.rows-apply {
+  border: 0;
+  background: transparent;
+  padding: 0 0 0 2px;
+  color: var(--dim);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  transition: color var(--snap);
+}
+.rows-apply[data-state="dirty"] { color: var(--neon-green); }
+.rows-apply[data-state="dirty"]:hover { color: var(--neon-cyan); }
+.rows-apply[data-state="busy"] { color: var(--neon-cyan); }
+.rows-apply:disabled { cursor: default; }
+.row-load-note {
+  padding: 7px 10px;
+  border: 1px solid var(--border-interactive);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  animation: ov-in 160ms var(--rise) backwards;
+}
 .filters-toggle {
   min-height: 34px;
   padding: 4px 12px;
