@@ -911,10 +911,67 @@ def test_dashboard_overview_and_calls_contract(tmp_path: Path) -> None:
     assert ".popover-anchor" in dashboard_css
     assert "min-width: 520px" in dashboard_css
 
+    # Row-limit picker: the row slice is selectable, and the coverage note says
+    # so instead of only reporting truncation.
+    assert 'id="rowLimit"' in dashboard
+    for option in ('value="5000"', 'value="15000"', 'value="50000"', 'value="all"'):
+        assert option in dashboard
+    assert "renderRowLimitControl" in dashboard_js
+    assert "confirmHeavyRowLoad" in dashboard_js
+    assert "HEAVY_ROW_THRESHOLD = 50000" in dashboard_js
+    assert 'raise "rows" in the header to load more' in dashboard_js
+    assert "limit: state.rowLimit" in dashboard_js
+    assert ".rows-picker" in dashboard_css
+
+    # Breakdown view: grouped cost table with composition, totals, and export.
+    assert 'id="breakdownSection"' in dashboard
+    assert dashboard.index('id="breakdownSection"') < dashboard.index('id="callsSection"')
+    assert 'data-view="breakdown"' in dashboard
+    for dimension in (
+        'data-group="model"',
+        'data-group="project"',
+        'data-group="thread"',
+        'data-group="effort"',
+        'data-group="thread_type"',
+        'data-group="source"',
+        'data-group="day"',
+    ):
+        assert dimension in dashboard
+    for symbol in (
+        "buildBreakdown",
+        "renderBreakdown",
+        "renderBreakdownRail",
+        "compositionBar",
+        "breakdownCsv",
+        "copyBreakdownCsv",
+        "applyGroupAsFilter",
+    ):
+        assert symbol in dashboard_js
+    assert "BREAKDOWN_PAGE_SIZE = 10" in dashboard_js
+    assert "complete for this range" in dashboard_js
+    assert "cost composition" in dashboard_js
+    assert "token composition" in dashboard_js
+    assert "cost_fresh_input_usd" in dashboard_js
+    assert "perMillionTokens" in dashboard_js
+    assert ".comp-seg" in dashboard_css
+    assert ".breakdown-row" in dashboard_css
+
+    # Search stays answerable from complete rollups instead of dropping the
+    # dashboard back to the truncated row slice.
+    assert "rollupSearchMatches" in dashboard_js
+    assert "rollupEquivalentFields" in dashboard_js
+    assert "threadCostSection" in dashboard_js
+
     # URL state round-trips the new state model.
     for key in (
         "'view'",
         "'q'",
+        "'rows'",
+        "'group'",
+        "'gsort'",
+        "'gdir'",
+        "'gpage'",
+        "'gsel'",
         "'date'",
         "'from'",
         "'to'",
@@ -2493,3 +2550,162 @@ def test_dashboard_payload_thread_rollups_complete_and_slim(tmp_path: Path) -> N
         assert group["thread_type"] == "parent"
         assert "usage_credits" in group
         assert "usage_credit_source" not in group
+
+
+def test_rollup_cost_components_sum_to_the_estimated_cost(tmp_path: Path) -> None:
+    db_path = tmp_path / "usage.sqlite3"
+    pricing_path = _write_pricing(tmp_path / "pricing.json")
+    upsert_usage_events(
+        [
+            _rollup_event("rollup-1", "2026-07-01T10:05:00.000Z"),
+            _rollup_event(
+                "rollup-2",
+                "2026-07-01T11:05:00.000Z",
+                model="model-without-a-price",
+            ),
+        ],
+        db_path=db_path,
+    )
+
+    payload = dashboard_payload(db_path=db_path, limit=5, pricing_path=pricing_path)
+    by_model = {group["model"]: group for group in payload["usage_rollups"]}
+
+    priced = by_model["gpt-5.5"]
+    assert abs(priced["cost_uncached_input_usd"] - (400 * 2.0) / 1_000_000) < 1e-12
+    assert abs(priced["cost_cached_input_usd"] - (600 * 0.5) / 1_000_000) < 1e-12
+    assert abs(priced["cost_output_usd"] - (50 * 10.0) / 1_000_000) < 1e-12
+    components = (
+        priced["cost_uncached_input_usd"]
+        + priced["cost_cached_input_usd"]
+        + priced["cost_output_usd"]
+    )
+    assert abs(components - priced["estimated_cost_usd"]) < 1e-12
+
+    unpriced = by_model["model-without-a-price"]
+    assert unpriced["estimated_cost_usd"] is None
+    assert unpriced["cost_uncached_input_usd"] is None
+    assert unpriced["cost_cached_input_usd"] is None
+    assert unpriced["cost_output_usd"] is None
+
+
+def test_rollups_expose_project_identity_without_leaking_paths(tmp_path: Path) -> None:
+    db_path = tmp_path / "usage.sqlite3"
+    pricing_path = _write_pricing(tmp_path / "pricing.json")
+    upsert_usage_events(
+        [
+            _rollup_event("rollup-1", "2026-07-01T10:05:00.000Z", cwd=str(tmp_path / "alpha")),
+            _rollup_event(
+                "rollup-2",
+                "2026-07-01T10:15:00.000Z",
+                session_id="sess-beta",
+                thread_name="Beta thread",
+                cwd=str(tmp_path / "beta"),
+            ),
+        ],
+        db_path=db_path,
+    )
+
+    payload = dashboard_payload(db_path=db_path, limit=1, pricing_path=pricing_path)
+
+    for key in ("usage_rollups", "thread_rollups"):
+        groups = payload[key]
+        assert {group["project_name"] for group in groups} == {"alpha", "beta"}, key
+        # cwd is a grouping input only; the raw path must never reach a payload.
+        assert all("cwd" not in group for group in groups), key
+        assert all("project_key" not in group for group in groups), key
+        assert all("git_remote_hash" not in group for group in groups), key
+
+    redacted = dashboard_payload(
+        db_path=db_path,
+        limit=1,
+        pricing_path=pricing_path,
+        privacy_mode="redacted",
+    )
+    assert all(
+        group["project_name"].startswith("Project ")
+        for group in redacted["usage_rollups"]
+    )
+
+
+def test_rollups_split_projects_while_keeping_totals_exact(tmp_path: Path) -> None:
+    db_path = tmp_path / "usage.sqlite3"
+    pricing_path = _write_pricing(tmp_path / "pricing.json")
+    events = [
+        _rollup_event("rollup-1", "2026-07-01T10:05:00.000Z", cwd=str(tmp_path / "alpha")),
+        _rollup_event("rollup-2", "2026-07-01T10:25:00.000Z", cwd=str(tmp_path / "alpha")),
+        _rollup_event("rollup-3", "2026-07-01T10:45:00.000Z", cwd=str(tmp_path / "beta")),
+    ]
+    upsert_usage_events(events, db_path=db_path)
+
+    payload = dashboard_payload(db_path=db_path, limit=1, pricing_path=pricing_path)
+    usage_rollups = payload["usage_rollups"]
+
+    # Same hour and model, so only the added cwd dimension separates them.
+    assert len(usage_rollups) == 2
+    assert sum(group["event_count"] for group in usage_rollups) == len(events)
+    assert sum(group["total_tokens"] for group in usage_rollups) == 1050 * len(events)
+    # Both rollup sets aggregate the same rows, which is what lets the dashboard
+    # swap to thread rollups while searching without changing any total.
+    assert sum(group["event_count"] for group in payload["thread_rollups"]) == len(events)
+    assert abs(
+        sum(group["estimated_cost_usd"] for group in usage_rollups)
+        - sum(group["estimated_cost_usd"] for group in payload["thread_rollups"])
+    ) < 1e-12
+
+
+def test_rollups_carry_cache_creation_tokens(tmp_path: Path) -> None:
+    db_path = tmp_path / "usage.sqlite3"
+    pricing_path = _write_pricing(tmp_path / "pricing.json")
+    upsert_usage_events(
+        [
+            _rollup_event(
+                "rollup-1",
+                "2026-07-01T10:05:00.000Z",
+                cache_creation_input_tokens=120,
+            ),
+            _rollup_event(
+                "rollup-2",
+                "2026-07-01T10:25:00.000Z",
+                cache_creation_input_tokens=80,
+            ),
+        ],
+        db_path=db_path,
+    )
+
+    payload = dashboard_payload(db_path=db_path, limit=1, pricing_path=pricing_path)
+
+    assert sum(g["cache_creation_input_tokens"] for g in payload["usage_rollups"]) == 200
+    assert sum(g["cache_creation_input_tokens"] for g in payload["thread_rollups"]) == 200
+
+
+def test_dashboard_rows_carry_cost_components_for_the_call_rail(tmp_path: Path) -> None:
+    db_path = tmp_path / "usage.sqlite3"
+    pricing_path = _write_pricing(tmp_path / "pricing.json")
+    upsert_usage_events(
+        [_rollup_event("rollup-1", "2026-07-01T10:05:00.000Z")],
+        db_path=db_path,
+    )
+
+    row = dashboard_payload(db_path=db_path, pricing_path=pricing_path)["rows"][0]
+    components = (
+        row["cost_uncached_input_usd"]
+        + row["cost_cached_input_usd"]
+        + row["cost_output_usd"]
+    )
+    assert abs(components - row["estimated_cost_usd"]) < 1e-12
+
+    # Compact live rows stay lean; the rail hydrates components on demand
+    # through the single-row detail endpoint.
+    compact = dashboard_payload(
+        db_path=db_path,
+        pricing_path=pricing_path,
+        compact_rows=True,
+    )["rows"][0]
+    assert "cost_uncached_input_usd" not in compact
+    detail = dashboard_record_payload(
+        db_path=db_path,
+        record_id="rollup-1",
+        pricing_path=pricing_path,
+    )
+    assert detail is not None
+    assert abs(detail["cost_uncached_input_usd"] - (400 * 2.0) / 1_000_000) < 1e-12

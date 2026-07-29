@@ -29,6 +29,7 @@ _THREAD_ROLLUP_SUM_FIELDS = (
     "event_count",
     "input_tokens",
     "cached_input_tokens",
+    "cache_creation_input_tokens",
     "output_tokens",
     "reasoning_output_tokens",
     "total_tokens",
@@ -53,6 +54,7 @@ def build_thread_rollups(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
             group.get("model"),
             group.get("effort"),
             group.get("thread_type"),
+            group.get("cwd") or "",
         )
         bucket = merged.get(key)
         if bucket is None:
@@ -65,6 +67,9 @@ def build_thread_rollups(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "model": group.get("model"),
                 "effort": group.get("effort"),
                 "thread_type": group.get("thread_type"),
+                # Kept only so callers can derive project identity; dashboard
+                # payloads drop it before the group is serialized.
+                "cwd": group.get("cwd") or "",
                 "max_context_ratio": None,
             }
             bucket.update({field: 0 for field in _THREAD_ROLLUP_SUM_FIELDS})

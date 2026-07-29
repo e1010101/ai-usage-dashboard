@@ -13,6 +13,8 @@
     payloadRollups,
     payloadThreadRollups,
     payloadLimit,
+    limitValue,
+    optionValueExists,
     usageCreditValue,
     isAutoReview,
     isSubagent,
@@ -72,6 +74,7 @@
   const customStartEl = el('customStart');
   const customEndEl = el('customEnd');
   const providerSwitchEl = el('providerSwitch');
+  const rowLimitEl = el('rowLimit');
   const filtersToggleEl = el('filtersToggle');
   const filtersPopoverEl = el('filtersPopover');
   const rangeNounEl = el('rangeNoun');
@@ -89,7 +92,19 @@
   const coverageNoteEl = el('coverageNote');
   const limitsGroupsEl = el('limitsGroups');
   const overviewSectionEl = el('overviewSection');
+  const breakdownSectionEl = el('breakdownSection');
   const callsSectionEl = el('callsSection');
+  const groupBySwitchEl = el('groupBySwitch');
+  const breakdownDayChipEl = el('breakdownDayChip');
+  const breakdownCaptionEl = el('breakdownCaption');
+  const breakdownRowsEl = el('breakdownRows');
+  const breakdownTotalsEl = el('breakdownTotals');
+  const breakdownPagerEl = el('breakdownPager');
+  const breakdownPagerStatusEl = el('breakdownPagerStatus');
+  const breakdownPrevEl = el('breakdownPrev');
+  const breakdownNextEl = el('breakdownNext');
+  const breakdownRailEl = el('breakdownRail');
+  const breakdownCopyEl = el('breakdownCopy');
   const ledgerDayChipEl = el('ledgerDayChip');
   const ledgerCaptionEl = el('ledgerCaption');
   const ledgerRowsEl = el('ledgerRows');
@@ -112,14 +127,24 @@
 
   /* ---- State ---- */
   const RANGES = new Set(['this-week', 'last-7-days', 'this-month', 'last-30-days', 'all', 'custom']);
+  const VIEWS = new Set(['overview', 'breakdown', 'calls']);
+  const GROUP_BYS = new Set(['model', 'project', 'thread', 'effort', 'thread_type', 'source', 'day']);
+  const GROUP_SORTS = new Set(['cost', 'tokens', 'calls', 'cache', 'per_call', 'per_mtok']);
+  const ROW_LIMITS = new Set(['5000', '15000', '50000', 'all']);
   const state = {
-    view: initialState.view === 'calls' ? 'calls' : 'overview',
+    view: VIEWS.has(initialState.view) ? initialState.view : 'overview',
     range: RANGES.has(initialState.range) ? initialState.range : 'this-week',
     customStart: initialState.customStart || '',
     customEnd: initialState.customEnd || '',
     provider: initialState.provider || '',
     search: initialState.search || '',
     tokensMetric: initialState.tokensMetric === 'uncached' ? 'uncached' : 'all',
+    rowLimit: ROW_LIMITS.has(initialState.rowLimit) ? initialState.rowLimit : limitValue(loadedLimit),
+    groupBy: GROUP_BYS.has(initialState.groupBy) ? initialState.groupBy : 'model',
+    groupSort: GROUP_SORTS.has(initialState.groupSort) ? initialState.groupSort : 'cost',
+    groupDir: initialState.groupDir || '',
+    groupPage: initialState.groupPage || 1,
+    selectedGroup: initialState.selectedGroup || '',
     showFilters: false,
     fModel: initialState.fModel || '',
     fEffort: initialState.fEffort || '',
@@ -133,12 +158,20 @@
     selectedThread: initialState.selectedThread || '',
     selectedCall: initialState.selectedCall || '',
   };
+  // Kept so the CSV export writes exactly what the table last rendered.
+  let lastBreakdown = { groups: [], totals: {}, complete: false };
 
   function currentDashboardState() {
     return {
       view: state.view,
       search: state.search,
       tokensMetric: state.tokensMetric,
+      rowLimit: state.rowLimit,
+      groupBy: state.groupBy,
+      groupSort: state.groupSort,
+      groupDir: state.groupDir,
+      groupPage: state.groupPage,
+      selectedGroup: state.selectedGroup,
       range: state.range,
       customStart: state.customStart,
       customEnd: state.customEnd,
@@ -283,8 +316,12 @@
   }
 
   /* ---- Filter chain: window -> provider -> search -> advanced -> day ---- */
-  function searchMatches(row, term) {
-    if (!term) return true;
+  // Thread rollups carry every searchable dimension except git_branch and cwd,
+  // so a term over thread/model/project/source can be answered from complete
+  // rollups instead of the truncated row slice. When it is, rows are matched on
+  // the same narrower field set so the calls table cannot disagree with the
+  // totals above it; branch/cwd terms fall back to the full row-only match.
+  function rollupEquivalentFields(row) {
     return [
       row.thread_name,
       row.parent_thread_name,
@@ -292,17 +329,33 @@
       row.thread_attachment_label,
       row.model,
       row.project_name,
-      row.git_branch,
-      row.cwd,
       row.source_app,
-    ].some(value => value && String(value).toLowerCase().includes(term));
+      row.source_provider,
+    ];
   }
-  function advancedMatches(row, term) {
-    return searchMatches(row, term)
+  function searchMatches(row, term, rollupEquivalent = false) {
+    if (!term) return true;
+    const fields = rollupEquivalent
+      ? rollupEquivalentFields(row)
+      : rollupEquivalentFields(row).concat([row.git_branch, row.cwd]);
+    return fields.some(value => value && String(value).toLowerCase().includes(term));
+  }
+  function advancedMatches(row, term, rollupEquivalent = false) {
+    return searchMatches(row, term, rollupEquivalent)
       && (!state.fModel || row.model === state.fModel)
       && (!state.fEffort || (row.effort || 'none') === state.fEffort)
       && (!state.fConfidence || confidenceOf(row) === state.fConfidence)
       && (!state.fThreadType || threadTypeOf(row) === state.fThreadType);
+  }
+  function rollupSearchMatches(group, term) {
+    if (!term) return true;
+    return [
+      group.thread_label,
+      group.model,
+      group.project_name,
+      group.source_app,
+      group.source_provider,
+    ].some(value => value && String(value).toLowerCase().includes(term));
   }
 
   function buildThreads(rows, totalCost) {
@@ -337,11 +390,21 @@
         cost,
         tokens,
         cacheRatio,
+        cachedTokens: cached,
+        uncachedTokens: uncached,
+        cacheWriteTokens: sum(calls, 'cache_creation_input_tokens'),
+        outputTokens: sum(calls, 'output_tokens'),
+        costUncached: sum(calls, 'cost_uncached_input_usd'),
+        costCached: sum(calls, 'cost_cached_input_usd'),
+        costOutput: sum(calls, 'cost_output_usd'),
         maxContext,
         provider,
         creditTotal,
         share: totalCost ? cost / totalCost : 0,
         hasEstimated: calls.some(call => call.pricing_estimated),
+        hasUnpriced: calls.some(call => !call.pricing_model),
+        models: [...new Set(calls.map(call => call.model).filter(Boolean))].sort(),
+        projects: [...new Set(calls.map(call => call.project_name).filter(Boolean))].sort(),
       };
     });
     threads.sort((a, b) => b.cost - a.cost);
@@ -361,10 +424,18 @@
           tokens: 0,
           cached: 0,
           uncached: 0,
+          cacheWrite: 0,
+          output: 0,
+          costUncached: 0,
+          costCached: 0,
+          costOutput: 0,
           maxContext: 0,
           creditTotal: 0,
           allAnthropic: true,
           hasEstimated: false,
+          hasUnpriced: false,
+          models: new Set(),
+          projects: new Set(),
         };
         byKey.set(group.thread_key, thread);
       }
@@ -374,11 +445,19 @@
       const cached = Number(group.cached_input_tokens) || 0;
       thread.cached += cached;
       thread.uncached += Math.max((Number(group.input_tokens) || 0) - cached, 0);
+      thread.cacheWrite += Number(group.cache_creation_input_tokens) || 0;
+      thread.output += Number(group.output_tokens) || 0;
+      thread.costUncached += Number(group.cost_uncached_input_usd) || 0;
+      thread.costCached += Number(group.cost_cached_input_usd) || 0;
+      thread.costOutput += Number(group.cost_output_usd) || 0;
       thread.maxContext = Math.max(thread.maxContext, Number(group.max_context_ratio) || 0);
       const creditValue = usageCreditValue(group);
       if (creditValue !== null) thread.creditTotal += creditValue;
       thread.allAnthropic = thread.allAnthropic && group.source_provider === 'anthropic';
       thread.hasEstimated = thread.hasEstimated || Boolean(group.pricing_estimated);
+      thread.hasUnpriced = thread.hasUnpriced || !group.pricing_model;
+      if (group.model) thread.models.add(group.model);
+      if (group.project_name) thread.projects.add(group.project_name);
     });
     const threads = [...byKey.values()].map(thread => {
       const rowThread = rowThreadsByKey.get(thread.key);
@@ -390,11 +469,21 @@
         cost: thread.cost,
         tokens: thread.tokens,
         cacheRatio: thread.cached + thread.uncached > 0 ? thread.cached / (thread.cached + thread.uncached) : 0,
+        cachedTokens: thread.cached,
+        uncachedTokens: thread.uncached,
+        cacheWriteTokens: thread.cacheWrite,
+        outputTokens: thread.output,
+        costUncached: thread.costUncached,
+        costCached: thread.costCached,
+        costOutput: thread.costOutput,
         maxContext: thread.maxContext,
         provider: thread.allAnthropic ? 'anthropic' : 'openai',
         creditTotal: thread.creditTotal,
         share: totalCost ? thread.cost / totalCost : 0,
         hasEstimated: thread.hasEstimated,
+        hasUnpriced: thread.hasUnpriced,
+        models: [...thread.models].sort(),
+        projects: [...thread.projects].sort(),
       };
     });
     threads.sort((a, b) => b.cost - a.cost);
@@ -469,18 +558,31 @@
       priorStart = win.startMs - (endEffective - win.startMs);
     }
     const baseRows = data.filter(row => (!state.provider || row.source_provider === state.provider) && inWindow(row));
-    const scopedRows = baseRows.filter(row => advancedMatches(row, term));
+    const rowOnlyMatches = baseRows.filter(row => advancedMatches(row, term));
 
-    // Free-text search only exists on raw rows; every other filter maps onto
-    // rollup dimensions, so totals stay exact even when the loaded row slice
-    // is truncated.
-    const rollupsUsable = rollups.length > 0 && !term && !win.invalid;
+    // Every filter maps onto a rollup dimension, so totals stay exact even when
+    // the loaded row slice is truncated. A search term needs the thread label,
+    // which only thread rollups carry, so they become the aggregate source
+    // while searching; both rollup sets aggregate the same rows identically.
     const groupMatches = group => (!state.provider || group.source_provider === state.provider)
       && (!state.fModel || group.model === state.fModel)
       && (!state.fEffort || (group.effort || 'none') === state.fEffort)
       && (!state.fConfidence || confidenceOf(group) === state.fConfidence)
       && (!state.fThreadType || (group.thread_type || 'parent') === state.fThreadType);
-    const scopedGroups = rollupsUsable ? rollups.filter(groupMatches) : [];
+    const termMatches = group => rollupSearchMatches(group, term);
+    const searchableRollups = term ? threadRollups : rollups;
+    const rollupCandidates = searchableRollups.length && !win.invalid
+      ? searchableRollups.filter(groupMatches).filter(termMatches)
+      : [];
+    // A term that only ever matched git_branch or cwd finds nothing in the
+    // rollups, so hand those back to the row-only path rather than reporting
+    // an empty range.
+    const rollupsUsable = rollupCandidates.length > 0
+      || (searchableRollups.length > 0 && !win.invalid && rowOnlyMatches.length === 0);
+    const scopedGroups = rollupsUsable ? rollupCandidates : [];
+    const scopedRows = rollupsUsable && term
+      ? baseRows.filter(row => advancedMatches(row, term, true))
+      : rowOnlyMatches;
     const windowGroups = scopedGroups.filter(inWindow);
 
     // Chart ignores the day filter itself so all bars stay comparable.
@@ -501,7 +603,7 @@
         if (state.provider && row.source_provider !== state.provider) return false;
         const ts = Date.parse(row.event_timestamp);
         return ts >= priorStart && ts < win.startMs;
-      }).filter(row => advancedMatches(row, term));
+      }).filter(row => advancedMatches(row, term, rollupsUsable));
     }
     let aggregates = null;
     if (rollupsUsable) {
@@ -524,13 +626,30 @@
     const cost = sum(rows, 'estimated_cost_usd');
     const rowThreads = buildThreads(rows, cost);
     let threads = rowThreads;
+    // Thread rollups carry every dimension the breakdown groups by, so one
+    // filtered set feeds both the ledger and the breakdown view.
+    let threadGroups = [];
     if (aggregates && threadRollups.length) {
-      let threadGroups = threadRollups.filter(groupMatches).filter(inWindow);
+      threadGroups = threadRollups.filter(groupMatches).filter(termMatches).filter(inWindow);
       if (dayBucket) threadGroups = threadGroups.filter(inDayBucket);
       const rowThreadsByKey = new Map(rowThreads.map(thread => [thread.key, thread]));
       threads = buildThreadsFromRollups(threadGroups, rowThreadsByKey, aggregates.cost);
     }
-    return { win, term, baseRows, rows, priorRows, chart, dayBucket, threads, cost, aggregates };
+    const groupsComplete = Boolean(aggregates) && threadGroups.length > 0;
+    return {
+      win,
+      term,
+      baseRows,
+      rows,
+      priorRows,
+      chart,
+      dayBucket,
+      threads,
+      threadGroups,
+      groupsComplete,
+      cost,
+      aggregates,
+    };
   }
 
   /* ---- Prompt line ---- */
@@ -539,6 +658,7 @@
     if (state.range === 'custom') echo += ` ${state.customStart || '…'}..${state.customEnd || 'now'}`;
     if (state.provider) echo += ` --provider ${state.provider === 'openai' ? 'codex' : 'claude'}`;
     if (state.view === 'calls') echo += ' --calls';
+    if (state.view === 'breakdown') echo += ` --breakdown-by ${state.groupBy}`;
     if (state.fModel) echo += ` --model ${state.fModel}`;
     if (state.fEffort) echo += ` --effort ${state.fEffort}`;
     if (state.fConfidence) echo += ` --confidence ${state.fConfidence}`;
@@ -567,6 +687,7 @@
     providerSwitchEl.querySelectorAll('.provider-btn').forEach(button => {
       button.dataset.active = (button.dataset.provider || '') === state.provider ? 'true' : 'false';
     });
+    renderRowLimitControl();
     const activeFilterCount = [state.fModel, state.fEffort, state.fConfidence, state.fThreadType].filter(Boolean).length;
     filtersToggleEl.textContent = state.showFilters
       ? '[ − filters ]'
@@ -576,6 +697,57 @@
     filtersToggleEl.dataset.open = state.showFilters ? 'true' : 'false';
     filtersToggleEl.dataset.count = !state.showFilters && activeFilterCount ? 'true' : 'false';
     filtersToggleEl.setAttribute('aria-expanded', state.showFilters ? 'true' : 'false');
+  }
+
+  // Rows are only needed for per-call detail — totals, the chart, threads and
+  // the breakdown come from rollups regardless — so the picker is framed as
+  // "how much per-call history to keep in memory", with the cost stated up
+  // front because a full fetch of a large index is genuinely heavy.
+  const APPROX_BYTES_PER_ROW = 1600;
+  const HEAVY_ROW_THRESHOLD = 50000;
+  function rowLimitCount(value) {
+    return value === 'all' ? totalAvailableRows : Number(value) || 0;
+  }
+  function confirmHeavyRowLoad(requested) {
+    if (typeof window.confirm !== 'function') return true;
+    return window.confirm(
+      `Load ${number.format(Math.min(requested, totalAvailableRows))} individual calls?\n\n`
+      + `That transfers roughly ${approxPayloadLabel(requested)} of JSON and can make this page slow or unresponsive.\n\n`
+      + 'Spend totals, the chart, the ledger and the breakdown already cover the whole range without it — '
+      + 'more rows only extend the calls table, per-call timelines, and branch/path search.',
+    );
+  }
+  function approxPayloadLabel(rowCount) {
+    const mb = (rowCount * APPROX_BYTES_PER_ROW) / 1000000;
+    return mb >= 1000 ? `~${(mb / 1000).toFixed(1)} GB` : `~${Math.round(mb)} MB`;
+  }
+  function renderRowLimitControl() {
+    if (!rowLimitEl) return;
+    if (!liveRefreshSupported) {
+      rowLimitEl.disabled = true;
+      rowLimitEl.title = 'Static snapshot: regenerate the dashboard with --limit to change how many calls are embedded.';
+      rowLimitEl.value = limitValue(loadedLimit);
+      return;
+    }
+    // A server started with a custom --limit lands on a value the fixed option
+    // list does not carry; surface it rather than silently showing a blank box.
+    if (!optionValueExists(rowLimitEl, state.rowLimit)) {
+      const option = document.createElement('option');
+      option.value = state.rowLimit;
+      option.textContent = state.rowLimit === 'all' ? 'all' : number.format(Number(state.rowLimit) || 0);
+      rowLimitEl.prepend(option);
+    }
+    if (rowLimitEl.value !== state.rowLimit) rowLimitEl.value = state.rowLimit;
+    const requested = rowLimitCount(state.rowLimit);
+    const capped = totalAvailableRows && requested >= totalAvailableRows;
+    rowLimitEl.dataset.heavy = requested > 50000 ? 'true' : 'false';
+    rowLimitEl.title = [
+      `Loaded ${number.format(data.length)} of ${number.format(totalAvailableRows)} calls in range.`,
+      capped
+        ? 'This range fits entirely in the loaded slice.'
+        : `Raising this loads more per-call history (${approxPayloadLabel(requested)} of JSON) so the calls table, timelines and text search reach further back.`,
+      'Spend totals, the chart, the ledger and the breakdown already cover the whole range at any setting.',
+    ].join(' ');
   }
 
   function renderFiltersPopover(scope) {
@@ -698,10 +870,13 @@
       coverageNoteEl.textContent = '';
       return;
     }
+    const loadMoreHint = liveRefreshSupported && state.rowLimit !== 'all'
+      ? ' — raise "rows" in the header to load more'
+      : '';
     coverageNoteEl.hidden = false;
     coverageNoteEl.textContent = scope.aggregates
-      ? `i totals, chart & threads cover the full range; per-call timelines show the newest ${number.format(data.length)} of ${number.format(totalAvailableRows)} calls (before ${fullDayFormat.format(new Date(oldestLoadedMs))})`
-      : `! range incomplete — loaded newest ${number.format(data.length)} of ${number.format(totalAvailableRows)} rows; usage before ${fullDayFormat.format(new Date(oldestLoadedMs))} is not shown`;
+      ? `i totals, chart & threads cover the full range; per-call timelines show the newest ${number.format(data.length)} of ${number.format(totalAvailableRows)} calls (before ${fullDayFormat.format(new Date(oldestLoadedMs))})${loadMoreHint}`
+      : `! range incomplete — loaded newest ${number.format(data.length)} of ${number.format(totalAvailableRows)} rows; usage before ${fullDayFormat.format(new Date(oldestLoadedMs))} is not shown${loadMoreHint}`;
   }
 
   function limitLevel(percent) {
@@ -918,6 +1093,39 @@
     if (thread.cacheRatio < 0.3) return 'Compare fresh input with the previous turn before continuing.';
     return 'No action needed. Expand calls only if a signal is unclear.';
   }
+  // Same cost story as the breakdown rail, scoped to one thread: where the
+  // money went by token class, and the unit rates that make threads comparable.
+  function threadCostSection(thread) {
+    const componentTotal = thread.costUncached + thread.costCached + thread.costOutput;
+    const perCall = thread.callCount ? thread.cost / thread.callCount : 0;
+    const perMillion = thread.tokens ? (thread.cost / thread.tokens) * 1000000 : 0;
+    const shareRow = (label, value) => kvRow(
+      label,
+      `${money(value)} · ${pctRound(componentTotal ? value / componentTotal : 0)}`,
+      '',
+      true,
+    );
+    const componentRows = componentTotal > 0
+      ? [
+        shareRow('fresh input', thread.costUncached),
+        shareRow('cache read', thread.costCached),
+        shareRow('output', thread.costOutput),
+      ].join('')
+      : kvRow('cost split', thread.hasUnpriced ? 'needs a configured price' : 'unavailable for this slice', 'info', true);
+    const cacheWriteRow = thread.cacheWriteTokens
+      ? kvRow('cache write tok', `${number.format(thread.cacheWriteTokens)} · unpriced`, 'info', true)
+      : '';
+    return `
+      <div class="rail-section">
+        <div class="rail-section-title">cost composition</div>
+        ${componentRows}
+        ${kvRow('per call', money(perCall, '$0.00'), '', true)}
+        ${kvRow('per 1M tokens', money(perMillion, '$0.00'), '', true)}
+        ${cacheWriteRow}
+        ${thread.models.length > 1 ? kvRow('models', `${thread.models[0]} +${thread.models.length - 1}`, 'dim', true) : ''}
+      </div>
+    `;
+  }
   function renderThreadRail(scope, thread) {
     if (!thread.calls.length) {
       overviewRailEl.innerHTML = `
@@ -934,6 +1142,7 @@
               <div><span class="stat-label">cache reuse</span><br><b class="stat-value" data-level="${cacheLevel(thread.cacheRatio)}">${pctRound(thread.cacheRatio)}</b></div>
               <div><span class="stat-label">calls</span><br><b>${number.format(thread.callCount)}</b></div>
             </div>
+            ${threadCostSection(thread)}
             <div class="rail-empty">&gt; this thread's calls are older than the loaded slice — totals above are complete, but the per-call timeline is unavailable</div>
           </div>
         </div>
@@ -1021,6 +1230,7 @@
             <div><span class="stat-label">cache reuse</span><br><b class="stat-value" data-level="${cacheLevel(thread.cacheRatio)}">${pctRound(thread.cacheRatio)}</b></div>
             <div><span class="stat-label">max context</span><br><b class="stat-value" data-level="${contextLevel(thread.maxContext)}">${pctRound(thread.maxContext)}</b></div>
           </div>
+          ${threadCostSection(thread)}
           <div class="callout">
             <div class="callout-title">next action</div>
             <div class="callout-body">${escapeHtml(threadNextAction(thread, chrono))}</div>
@@ -1050,6 +1260,357 @@
       : null;
     if (thread) renderThreadRail(scope, thread);
     else renderAttentionRail(scope);
+  }
+
+  /* ---- Breakdown view ---- */
+  // Thread rollups cover every call in the range, so a breakdown built from
+  // them reconciles with the hero total. Raw rows are the fallback for the
+  // cases rollups cannot answer (invalid window, branch/cwd search terms).
+  const BREAKDOWN_PAGE_SIZE = 10;
+  const GROUP_LABELS = {
+    model: 'model',
+    project: 'project',
+    thread: 'thread',
+    effort: 'effort',
+    thread_type: 'thread type',
+    source: 'provider',
+    day: 'day',
+  };
+  function groupKeyOf(item, fromRollups) {
+    if (state.groupBy === 'model') return item.model || 'unknown model';
+    if (state.groupBy === 'project') return item.project_name || 'unknown project';
+    if (state.groupBy === 'thread') return fromRollups ? (item.thread_label || 'unknown thread') : rowThreadLabel(item);
+    if (state.groupBy === 'effort') return item.effort || 'none';
+    if (state.groupBy === 'thread_type') return fromRollups ? (item.thread_type || 'parent') : threadTypeOf(item);
+    if (state.groupBy === 'source') return [item.source_app, item.source_provider].filter(Boolean).join(' / ') || 'unknown source';
+    return localDateKey(eventTimeMs(item));
+  }
+  function groupSortDirection() {
+    return state.groupDir || (state.groupSort === 'cache' ? 'asc' : 'desc');
+  }
+  function groupSortValue(group) {
+    if (state.groupSort === 'tokens') return group.tokens;
+    if (state.groupSort === 'calls') return group.calls;
+    if (state.groupSort === 'cache') return group.cacheRatio;
+    if (state.groupSort === 'per_call') return group.perCall;
+    if (state.groupSort === 'per_mtok') return group.perMillionTokens;
+    return group.cost;
+  }
+  function buildBreakdown(scope) {
+    const fromRollups = scope.groupsComplete;
+    const items = fromRollups ? scope.threadGroups : scope.rows;
+    const buckets = new Map();
+    items.forEach(item => {
+      const key = groupKeyOf(item, fromRollups);
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = {
+          key,
+          cost: 0,
+          calls: 0,
+          tokens: 0,
+          cached: 0,
+          uncached: 0,
+          cacheWrite: 0,
+          output: 0,
+          costUncached: 0,
+          costCached: 0,
+          costOutput: 0,
+          credits: 0,
+          hasEstimated: false,
+          hasUnpriced: false,
+          providers: new Set(),
+        };
+        buckets.set(key, bucket);
+      }
+      const cached = Number(item.cached_input_tokens) || 0;
+      bucket.cost += Number(item.estimated_cost_usd) || 0;
+      bucket.calls += fromRollups ? Number(item.event_count) || 0 : 1;
+      bucket.tokens += tokensOf(item);
+      bucket.cached += cached;
+      bucket.uncached += Math.max((Number(item.input_tokens) || 0) - cached, 0);
+      bucket.cacheWrite += Number(item.cache_creation_input_tokens) || 0;
+      bucket.output += Number(item.output_tokens) || 0;
+      bucket.costUncached += Number(item.cost_uncached_input_usd) || 0;
+      bucket.costCached += Number(item.cost_cached_input_usd) || 0;
+      bucket.costOutput += Number(item.cost_output_usd) || 0;
+      const creditValue = usageCreditValue(item);
+      if (creditValue !== null) bucket.credits += creditValue;
+      bucket.hasEstimated = bucket.hasEstimated || Boolean(item.pricing_estimated);
+      bucket.hasUnpriced = bucket.hasUnpriced || !item.pricing_model;
+      if (item.source_provider) bucket.providers.add(item.source_provider);
+    });
+    const totalCost = [...buckets.values()].reduce((total, bucket) => total + bucket.cost, 0);
+    const groups = [...buckets.values()].map(bucket => ({
+      key: bucket.key,
+      cost: bucket.cost,
+      calls: bucket.calls,
+      tokens: bucket.tokens,
+      cachedTokens: bucket.cached,
+      uncachedTokens: bucket.uncached,
+      cacheWriteTokens: bucket.cacheWrite,
+      outputTokens: bucket.output,
+      costUncached: bucket.costUncached,
+      costCached: bucket.costCached,
+      costOutput: bucket.costOutput,
+      componentsKnown: bucket.costUncached + bucket.costCached + bucket.costOutput > 0,
+      credits: bucket.credits,
+      cacheRatio: bucket.cached + bucket.uncached > 0 ? bucket.cached / (bucket.cached + bucket.uncached) : 0,
+      share: totalCost ? bucket.cost / totalCost : 0,
+      perCall: bucket.calls ? bucket.cost / bucket.calls : 0,
+      perMillionTokens: bucket.tokens ? (bucket.cost / bucket.tokens) * 1000000 : 0,
+      hasEstimated: bucket.hasEstimated,
+      hasUnpriced: bucket.hasUnpriced,
+      provider: bucket.providers.size === 1 ? [...bucket.providers][0] : 'mixed',
+    }));
+    const direction = groupSortDirection();
+    groups.sort((a, b) => (direction === 'asc'
+      ? groupSortValue(a) - groupSortValue(b)
+      : groupSortValue(b) - groupSortValue(a)));
+    const totals = groups.reduce((acc, group) => ({
+      cost: acc.cost + group.cost,
+      calls: acc.calls + group.calls,
+      tokens: acc.tokens + group.tokens,
+      credits: acc.credits + group.credits,
+      costUncached: acc.costUncached + group.costUncached,
+      costCached: acc.costCached + group.costCached,
+      costOutput: acc.costOutput + group.costOutput,
+      cachedTokens: acc.cachedTokens + group.cachedTokens,
+      uncachedTokens: acc.uncachedTokens + group.uncachedTokens,
+    }), {
+      cost: 0,
+      calls: 0,
+      tokens: 0,
+      credits: 0,
+      costUncached: 0,
+      costCached: 0,
+      costOutput: 0,
+      cachedTokens: 0,
+      uncachedTokens: 0,
+    });
+    return { groups, totals, complete: fromRollups };
+  }
+  function compositionBar(group) {
+    if (!group.componentsKnown) {
+      return '<span class="comp-bar comp-bar-empty" title="Per-component cost needs a configured price for every model in this group">n/a</span>';
+    }
+    const total = group.costUncached + group.costCached + group.costOutput;
+    const segments = [
+      { kind: 'uncached', label: 'fresh input', value: group.costUncached },
+      { kind: 'cached', label: 'cache read', value: group.costCached },
+      { kind: 'output', label: 'output', value: group.costOutput },
+    ];
+    const title = segments
+      .map(segment => `${segment.label} ${money(segment.value)} (${pctRound(total ? segment.value / total : 0)})`)
+      .join(' · ');
+    const bars = segments.map(segment => {
+      const width = total ? (segment.value / total) * 100 : 0;
+      return `<span class="comp-seg" data-kind="${segment.kind}" data-css="width: ${width.toFixed(2)}%"></span>`;
+    }).join('');
+    return `<span class="comp-bar" title="${escapeHtml(title)}">${bars}</span>`;
+  }
+  function breakdownCsv(breakdown) {
+    const header = [
+      GROUP_LABELS[state.groupBy] || 'group',
+      'spend_usd',
+      'share',
+      'calls',
+      'tokens',
+      'cache_ratio',
+      'usd_per_call',
+      'usd_per_million_tokens',
+      'cost_fresh_input_usd',
+      'cost_cache_read_usd',
+      'cost_output_usd',
+      'cache_write_tokens',
+      'codex_credits',
+      'pricing',
+    ];
+    const escapeCell = value => {
+      const text = String(value === null || value === undefined ? '' : value);
+      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const round = (value, places) => Number(value || 0).toFixed(places);
+    const lines = breakdown.groups.map(group => [
+      group.key,
+      round(group.cost, 6),
+      round(group.share, 6),
+      group.calls,
+      group.tokens,
+      round(group.cacheRatio, 6),
+      round(group.perCall, 8),
+      round(group.perMillionTokens, 6),
+      group.componentsKnown ? round(group.costUncached, 6) : '',
+      group.componentsKnown ? round(group.costCached, 6) : '',
+      group.componentsKnown ? round(group.costOutput, 6) : '',
+      group.cacheWriteTokens,
+      round(group.credits, 4),
+      group.hasUnpriced ? 'partly unpriced' : group.hasEstimated ? 'estimated' : 'configured',
+    ].map(escapeCell).join(','));
+    return [header.join(','), ...lines].join('\n');
+  }
+  function renderBreakdown(scope) {
+    const breakdown = buildBreakdown(scope);
+    lastBreakdown = breakdown;
+    const groups = breakdown.groups;
+    const direction = groupSortDirection();
+    const pageCount = Math.max(1, Math.ceil(groups.length / BREAKDOWN_PAGE_SIZE));
+    const page = Math.min(state.groupPage, pageCount);
+    state.groupPage = page;
+    const startIndex = (page - 1) * BREAKDOWN_PAGE_SIZE;
+    const visible = groups.slice(startIndex, startIndex + BREAKDOWN_PAGE_SIZE);
+    const coverage = breakdown.complete
+      ? 'complete for this range'
+      : `newest ${number.format(scope.rows.length)} loaded calls only`;
+    breakdownCaptionEl.textContent = `${number.format(groups.length)} ${GROUP_LABELS[state.groupBy] || 'group'} groups · ${coverage} · sorted by ${state.groupSort.replace('_', ' ')} ${direction === 'desc' ? '↓' : '↑'}`;
+    renderDayChip(breakdownDayChipEl, scope);
+    groupBySwitchEl.querySelectorAll('[data-group]').forEach(button => {
+      button.dataset.active = button.dataset.group === state.groupBy ? 'true' : 'false';
+    });
+    breakdownSectionEl.querySelectorAll('.sort-btn[data-group-sort]').forEach(button => {
+      const key = button.dataset.groupSort;
+      button.dataset.active = key === state.groupSort ? 'true' : 'false';
+      const indicator = button.querySelector('.sort-ind');
+      if (indicator) indicator.textContent = key === state.groupSort ? (direction === 'desc' ? '▾' : '▴') : '';
+    });
+    if (!groups.length) {
+      breakdownRowsEl.innerHTML = '<div class="list-empty">&gt; no usage in range — widen the time filter</div>';
+      breakdownTotalsEl.hidden = true;
+    } else {
+      breakdownRowsEl.innerHTML = visible.map((group, index) => {
+        const priceMark = group.hasUnpriced ? '<span class="signal-chip" data-kind="price">unpriced</span>'
+          : group.hasEstimated ? '<span class="signal-chip" data-kind="price">est.</span>'
+            : '';
+        return `
+          <div class="breakdown-row" data-group-key="${escapeHtml(group.key)}" data-selected="${state.selectedGroup === group.key ? 'true' : 'false'}" role="button" tabindex="0">
+            <div class="cell-clip">
+              <span class="breakdown-rank">#${startIndex + index + 1}</span>
+              <span class="breakdown-name" title="${escapeHtml(group.key)}">${escapeHtml(group.key)}</span>
+              ${priceMark}
+            </div>
+            <div class="call-num col-strong">${escapeHtml(money(group.cost))}</div>
+            <div class="breakdown-share">${compositionBar(group)}<span class="share-pct">${pctRound(group.share)}</span></div>
+            <div class="call-num">${escapeHtml(number.format(group.calls))}</div>
+            <div class="call-num">${escapeHtml(compactTokens(group.tokens))}</div>
+            <div class="call-num cache-value" data-level="${cacheLevel(group.cacheRatio)}">${pctRound(group.cacheRatio)}</div>
+            <div class="call-num">${escapeHtml(money(group.perCall, '$0.00'))}</div>
+            <div class="call-num">${escapeHtml(money(group.perMillionTokens, '$0.00'))}</div>
+          </div>
+        `;
+      }).join('');
+      const totals = breakdown.totals;
+      breakdownTotalsEl.hidden = false;
+      breakdownTotalsEl.innerHTML = `
+        <span class="breakdown-totals-label">total</span>
+        <span>${escapeHtml(money(totals.cost))}</span>
+        <span>${escapeHtml(number.format(totals.calls))} calls</span>
+        <span>${escapeHtml(compactTokens(totals.tokens))} tokens</span>
+        <span>${escapeHtml(`fresh ${money(totals.costUncached)} · cache ${money(totals.costCached)} · output ${money(totals.costOutput)}`)}</span>
+        ${totals.credits ? `<span>${escapeHtml(`${credits(totals.credits)} cr`)}</span>` : ''}
+      `;
+    }
+    breakdownPagerEl.hidden = pageCount <= 1;
+    if (pageCount > 1) {
+      const endIndex = Math.min(startIndex + BREAKDOWN_PAGE_SIZE, groups.length);
+      breakdownPagerStatusEl.textContent = `${startIndex + 1}–${endIndex} of ${groups.length} groups · [ page ${page}/${pageCount} ]`;
+      breakdownPrevEl.disabled = page <= 1;
+      breakdownNextEl.disabled = page >= pageCount;
+    }
+    renderBreakdownRail(breakdown);
+  }
+  function renderBreakdownRail(breakdown) {
+    const group = state.selectedGroup
+      ? breakdown.groups.find(candidate => candidate.key === state.selectedGroup)
+      : null;
+    if (!group) {
+      breakdownRailEl.innerHTML = '<div class="rail-empty">&gt; click a group to see its cost composition</div>';
+      return;
+    }
+    const componentRows = group.componentsKnown
+      ? [
+        kvRow('fresh input', `${money(group.costUncached)} · ${pctRound(group.cost ? group.costUncached / group.cost : 0)}`, '', true),
+        kvRow('cache read', `${money(group.costCached)} · ${pctRound(group.cost ? group.costCached / group.cost : 0)}`, '', true),
+        kvRow('output', `${money(group.costOutput)} · ${pctRound(group.cost ? group.costOutput / group.cost : 0)}`, '', true),
+      ].join('')
+      : kvRow('cost split', 'needs a configured price for every model here', 'info', true);
+    const tokenRows = [
+      kvRow('fresh input tok', number.format(group.uncachedTokens), '', true),
+      kvRow('cache read tok', number.format(group.cachedTokens), '', true),
+      kvRow('cache write tok', `${number.format(group.cacheWriteTokens)}${group.cacheWriteTokens ? ' · unpriced' : ''}`, group.cacheWriteTokens ? 'info' : '', true),
+      kvRow('output tok', number.format(group.outputTokens), '', true),
+    ].join('');
+    breakdownRailEl.innerHTML = `
+      <div class="kv-card kv-primary">
+        <div class="kv-title">${escapeHtml(group.key)}</div>
+        ${kvRow('spend', `${money(group.cost)} · ${pctRound(group.share)} of range`)}
+        ${kvRow('calls', `${number.format(group.calls)} · ${money(group.perCall, '$0.00')} each`)}
+        ${kvRow('tokens', `${number.format(group.tokens)} · ${money(group.perMillionTokens, '$0.00')} per 1M`)}
+        ${kvRow('cache reuse', pctRound(group.cacheRatio), group.cacheRatio < 0.3 ? 'warn' : 'good')}
+        ${group.credits ? kvRow('codex credits', `${credits(group.credits)} cr`) : ''}
+      </div>
+      <div class="kv-card">
+        <div class="kv-title">cost composition</div>
+        ${componentRows}
+      </div>
+      <div class="kv-card">
+        <div class="kv-title">token composition</div>
+        ${tokenRows}
+      </div>
+      <button type="button" class="rail-action-btn" data-action="filter-group" data-group-key="${escapeHtml(group.key)}">&gt; filter the dashboard to this group</button>
+    `;
+  }
+
+  // Turning a group into a filter keeps the reader in one mental model: the
+  // dimensions that have a real filter chip use it, the rest fall back to the
+  // search box, which reads the same dimensions off the rollups.
+  function applyGroupAsFilter(key) {
+    if (!key) return;
+    if (state.groupBy === 'model') {
+      setState({ fModel: state.fModel === key ? '' : key }, { resetPages: true, clearSelection: true });
+      return;
+    }
+    if (state.groupBy === 'effort') {
+      setState({ fEffort: state.fEffort === key ? '' : key }, { resetPages: true, clearSelection: true });
+      return;
+    }
+    if (state.groupBy === 'thread_type') {
+      setState({ fThreadType: state.fThreadType === key ? '' : key }, { resetPages: true, clearSelection: true });
+      return;
+    }
+    if (state.groupBy === 'day') {
+      setState({ dayKey: state.dayKey === key ? '' : key }, { resetPages: true, clearSelection: true });
+      return;
+    }
+    if (state.groupBy === 'source') {
+      const provider = key.includes('anthropic') ? 'anthropic' : key.includes('openai') ? 'openai' : '';
+      setState({ provider: state.provider === provider ? '' : provider }, { resetPages: true, clearSelection: true });
+      return;
+    }
+    setState({ search: state.search === key ? '' : key }, { resetPages: true, clearSelection: true });
+  }
+  function copyBreakdownCsv() {
+    const restore = () => {
+      breakdownCopyEl.textContent = '> copy csv';
+    };
+    if (!lastBreakdown.groups.length) {
+      breakdownCopyEl.textContent = '> nothing to copy';
+      window.setTimeout(restore, 1600);
+      return;
+    }
+    const csv = breakdownCsv(lastBreakdown);
+    const clipboard = navigator.clipboard;
+    if (!clipboard || !clipboard.writeText) {
+      breakdownCopyEl.textContent = '> clipboard unavailable';
+      window.setTimeout(restore, 1600);
+      return;
+    }
+    clipboard.writeText(csv).then(() => {
+      breakdownCopyEl.textContent = `> copied ${lastBreakdown.groups.length} rows`;
+      window.setTimeout(restore, 1600);
+    }).catch(() => {
+      breakdownCopyEl.textContent = '> copy failed';
+      window.setTimeout(restore, 1600);
+    });
   }
 
   /* ---- Calls view ---- */
@@ -1188,10 +1749,29 @@
       kvRow('parent thread', row.resolved_parent_thread_name || row.parent_thread_name || 'none'),
       kvRow('timestamp', narrativeFormat.format(new Date(row.event_timestamp))),
     ].join('');
+    // Cost components ride on the full row, so compact live rows show them once
+    // the on-demand detail fetch lands rather than rendering a misleading zero.
+    const componentTotal = ['cost_uncached_input_usd', 'cost_cached_input_usd', 'cost_output_usd']
+      .reduce((total, field) => total + (Number(row[field]) || 0), 0);
+    const componentShare = (label, field) => kvRow(
+      label,
+      `${money(row[field], '$0.00')} · ${pctRound(componentTotal ? (Number(row[field]) || 0) / componentTotal : 0)}`,
+      '',
+      true,
+    );
+    const componentRows = componentTotal > 0
+      ? [
+        componentShare(anthropic ? 'direct input cost' : 'uncached input cost', 'cost_uncached_input_usd'),
+        componentShare(anthropic ? 'cache read cost' : 'cached input cost', 'cost_cached_input_usd'),
+        componentShare('output cost', 'cost_output_usd'),
+      ].join('')
+      : kvRow('cost split', pendingText(row, row.pricing_model ? '' : 'no configured price'), 'info', true);
+    const cacheCreation = Number(row.cache_creation_input_tokens) || 0;
     const tokensRows = [
+      componentRows,
       kvRow('last call total', number.format(Number(row.total_tokens) || 0), '', true),
       kvRow(anthropic ? 'cache read' : 'cached input', number.format(Number(row.cached_input_tokens) || 0), '', true),
-      kvRow('cache creation', number.format(Number(row.cache_creation_input_tokens) || 0), '', true),
+      kvRow('cache creation', `${number.format(cacheCreation)}${cacheCreation ? ' · unpriced' : ''}`, cacheCreation ? 'info' : '', true),
       kvRow(anthropic ? 'direct input' : 'uncached input', number.format(Number(row.uncached_input_tokens) || 0), '', true),
       kvRow('output', number.format(Number(row.output_tokens) || 0), '', true),
       kvRow('reasoning output', number.format(Number(row.reasoning_output_tokens) || 0), '', true),
@@ -1306,10 +1886,13 @@
       button.dataset.active = button.dataset.view === state.view ? 'true' : 'false';
     });
     overviewSectionEl.hidden = state.view !== 'overview';
+    breakdownSectionEl.hidden = state.view !== 'breakdown';
     callsSectionEl.hidden = state.view !== 'calls';
     if (state.view === 'overview') {
       renderLedger(scope);
       renderOverviewRail(scope);
+    } else if (state.view === 'breakdown') {
+      renderBreakdown(scope);
     } else {
       renderCallsTable(scope);
       renderCallRail(scope);
@@ -1324,10 +1907,12 @@
     if (options.resetPages) {
       state.page = 1;
       state.ledgerPage = 1;
+      state.groupPage = 1;
     }
     if (options.clearSelection) {
       state.selectedThread = '';
       state.selectedCall = '';
+      state.selectedGroup = '';
     }
     if (options.clearDay) state.dayKey = '';
     render();
@@ -1406,13 +1991,20 @@
       return;
     }
     refreshInFlight = true;
-    updateLiveStatus(manual ? 'Refreshing' : 'Checking', manual ? 'Refreshing local usage index...' : 'Checking for new usage...');
+    const requestedRows = rowLimitCount(state.rowLimit);
+    updateLiveStatus(
+      manual ? 'Refreshing' : 'Checking',
+      manual
+        ? `Refreshing local usage index (loading up to ${number.format(requestedRows)} calls)...`
+        : 'Checking for new usage...',
+    );
     try {
-      // Rollups carry complete totals for the window, so the raw-row slice can
-      // stay at the server's default limit instead of an unbounded fetch.
+      // Rollups carry complete totals for the window, so the raw-row slice only
+      // needs to be as deep as the per-call history the reader asked for.
       const params = new URLSearchParams({
         refresh: '1',
         include_archived: includeArchived ? '1' : '0',
+        limit: state.rowLimit,
         _: String(Date.now()),
       });
       const win = currentWindow();
@@ -1582,6 +2174,20 @@
     if (!button) return;
     setState({ provider: button.dataset.provider || '' }, { resetPages: true, clearSelection: true });
   });
+  if (rowLimitEl) {
+    rowLimitEl.addEventListener('change', () => {
+      const next = rowLimitEl.value;
+      // Loading every call of a large index is a genuinely heavy operation that
+      // an accidental click should not trigger, so the cost is confirmed before
+      // the fetch rather than explained after the tab stalls.
+      const requested = rowLimitCount(next);
+      if (requested > HEAVY_ROW_THRESHOLD && !confirmHeavyRowLoad(requested)) {
+        rowLimitEl.value = state.rowLimit;
+        return;
+      }
+      setState({ rowLimit: next }, { resetPages: true, refetch: true });
+    });
+  }
   filtersToggleEl.addEventListener('click', () => {
     setState({ showFilters: !state.showFilters });
   });
@@ -1667,6 +2273,42 @@
     event.preventDefault();
     selectCall(row.dataset.recordId);
   });
+  groupBySwitchEl.addEventListener('click', event => {
+    const button = event.target.closest('[data-group]');
+    if (!button) return;
+    setState({ groupBy: button.dataset.group, groupPage: 1, selectedGroup: '' });
+  });
+  breakdownSectionEl.querySelectorAll('.sort-btn[data-group-sort]').forEach(button => {
+    button.addEventListener('click', () => {
+      const key = button.dataset.groupSort;
+      if (state.groupSort === key) {
+        setState({ groupDir: groupSortDirection() === 'desc' ? 'asc' : 'desc', groupPage: 1 });
+      } else {
+        setState({ groupSort: key, groupDir: '', groupPage: 1 });
+      }
+    });
+  });
+  breakdownRowsEl.addEventListener('click', event => {
+    const row = event.target.closest('[data-group-key]');
+    if (!row) return;
+    const key = row.dataset.groupKey;
+    setState({ selectedGroup: state.selectedGroup === key ? '' : key });
+  });
+  breakdownRowsEl.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const row = event.target.closest('[data-group-key]');
+    if (!row) return;
+    event.preventDefault();
+    setState({ selectedGroup: state.selectedGroup === row.dataset.groupKey ? '' : row.dataset.groupKey });
+  });
+  breakdownRailEl.addEventListener('click', event => {
+    const filterGroup = event.target.closest('[data-action="filter-group"]');
+    if (!filterGroup) return;
+    applyGroupAsFilter(filterGroup.dataset.groupKey || '');
+  });
+  breakdownPrevEl.addEventListener('click', () => setState({ groupPage: Math.max(1, state.groupPage - 1) }));
+  breakdownNextEl.addEventListener('click', () => setState({ groupPage: state.groupPage + 1 }));
+  breakdownCopyEl.addEventListener('click', () => copyBreakdownCsv());
   callsPrevEl.addEventListener('click', () => setState({ page: Math.max(1, state.page - 1) }));
   callsNextEl.addEventListener('click', () => setState({ page: state.page + 1 }));
   callsSectionEl.querySelectorAll('.sort-btn[data-sort-key]').forEach(button => {

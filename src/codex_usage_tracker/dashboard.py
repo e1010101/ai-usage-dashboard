@@ -36,6 +36,7 @@ from codex_usage_tracker.paths import (
 )
 from codex_usage_tracker.pricing import (
     annotate_rollups_with_cost,
+    annotate_rows_with_cost_components,
     annotate_rows_with_efficiency,
     load_pricing_config,
 )
@@ -174,6 +175,8 @@ def dashboard_payload(
         ),
         pricing=pricing,
         allowance=allowance,
+        projects=projects,
+        privacy_mode=privacy_mode,
     )
     thread_rollups = _annotate_rollup_groups(
         build_thread_rollups(
@@ -186,6 +189,8 @@ def dashboard_payload(
         ),
         pricing=pricing,
         allowance=allowance,
+        projects=projects,
+        privacy_mode=privacy_mode,
     )
     allowance_summary = summarize_allowance_usage(annotated_rows, allowance)
     normalized_limit = _normalize_limit(limit)
@@ -451,13 +456,33 @@ def _provider_limit_snapshots(
 
 _ROLLUP_CREDIT_FIELDS = ("usage_credits", "usage_credit_confidence")
 
+# Rollup groups carry a cwd only so project identity can be derived; the raw
+# path itself never reaches the payload, and every other project field is
+# recomputable from the name, so they are dropped to keep groups slim.
+_ROLLUP_DROPPED_FIELDS = frozenset(
+    {
+        "cwd",
+        "project_key",
+        "project_root_hash",
+        "project_alias_configured",
+        "project_relative_cwd",
+        "project_ignored",
+        "project_tags",
+        "git_branch",
+        "git_remote_hash",
+        "git_remote_label",
+    }
+)
+
 
 def _annotate_rollup_groups(
     groups: list[dict[str, Any]],
     pricing,
     allowance,
+    projects,
+    privacy_mode: str,
 ) -> list[dict[str, Any]]:
-    """Attach exact cost and credit sums to rollup groups, keeping them slim.
+    """Attach exact cost, credit, and project sums to rollup groups, keeping them slim.
 
     Cost and credit formulas are linear in token components, so annotating the
     group sums matches summing per-row annotations exactly.
@@ -467,13 +492,18 @@ def _annotate_rollup_groups(
         annotate_rollups_with_cost(groups, pricing),
         allowance,
     )
+    annotated = apply_project_privacy_to_rows(
+        annotate_rows_with_project_identity(annotated, projects),
+        privacy_mode=privacy_mode,
+    )
     slimmed: list[dict[str, Any]] = []
     for group in annotated:
         slimmed.append(
             {
                 key: value
                 for key, value in group.items()
-                if not key.startswith("usage_credit") or key in _ROLLUP_CREDIT_FIELDS
+                if key not in _ROLLUP_DROPPED_FIELDS
+                and (not key.startswith("usage_credit") or key in _ROLLUP_CREDIT_FIELDS)
             }
         )
     return slimmed
@@ -488,7 +518,10 @@ def _annotate_dashboard_rows(
     privacy_mode: str,
 ) -> list[dict[str, Any]]:
     annotated_rows = annotate_rows_with_allowance(
-        annotate_rows_with_efficiency(rows, pricing),
+        annotate_rows_with_cost_components(
+            annotate_rows_with_efficiency(rows, pricing),
+            pricing,
+        ),
         allowance,
     )
     annotated_rows = annotate_rows_with_recommendations(annotated_rows, thresholds)

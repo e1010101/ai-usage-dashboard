@@ -44,6 +44,15 @@
             <button class="seg-btn provider-btn" type="button" data-provider="openai">[ codex ]</button>
             <button class="seg-btn provider-btn" type="button" data-provider="anthropic">[ claude code ]</button>
           </div>
+          <span class="rows-picker">
+            <label class="rows-label" for="rowLimit">rows</label>
+            <select id="rowLimit" aria-label="How many individual calls to load">
+              <option value="5000">5,000</option>
+              <option value="15000">15,000</option>
+              <option value="50000">50,000</option>
+              <option value="all">all</option>
+            </select>
+          </span>
           <button id="filtersToggle" class="filters-toggle" type="button" aria-expanded="false">[ + filters ]</button>
         </div>
       </div>
@@ -94,6 +103,7 @@
           <div class="panel-head-left">
             <div class="seg-group view-switch" role="group" aria-label="Dashboard view">
               <button class="view-btn" type="button" data-view="overview">overview</button>
+              <button class="view-btn" type="button" data-view="breakdown">breakdown</button>
               <button class="view-btn" type="button" data-view="calls">calls</button>
             </div>
             <h2 class="panel-title"><span class="panel-title-dim">:: </span>where it went</h2>
@@ -115,12 +125,76 @@
       <aside id="overviewRail" class="rail" aria-label="Detail rail"></aside>
     </section>
 
+    <section id="breakdownSection" class="work-section" aria-label="Cost breakdown" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-head-left">
+            <div class="seg-group view-switch" role="group" aria-label="Dashboard view">
+              <button class="view-btn" type="button" data-view="overview">overview</button>
+              <button class="view-btn" type="button" data-view="breakdown">breakdown</button>
+              <button class="view-btn" type="button" data-view="calls">calls</button>
+            </div>
+            <h2 class="panel-title"><span class="panel-title-dim">:: </span>cost breakdown</h2>
+          </div>
+          <span class="panel-head-right">
+            <button id="breakdownDayChip" class="day-chip" type="button" hidden></button>
+            <span id="breakdownCaption" class="panel-caption">0 groups</span>
+          </span>
+        </div>
+        <div id="groupBySwitch" class="group-by-row" role="group" aria-label="Group cost by">
+          <span class="group-by-label">group by</span>
+          <button class="filter-chip" type="button" data-group="model">model</button>
+          <button class="filter-chip" type="button" data-group="project">project</button>
+          <button class="filter-chip" type="button" data-group="thread">thread</button>
+          <button class="filter-chip" type="button" data-group="effort">effort</button>
+          <button class="filter-chip" type="button" data-group="thread_type">thread type</button>
+          <button class="filter-chip" type="button" data-group="source">provider</button>
+          <button class="filter-chip" type="button" data-group="day">day</button>
+          <button id="breakdownCopy" class="rail-action-btn breakdown-copy" type="button" title="Copy this breakdown as CSV to the clipboard">&gt; copy csv</button>
+        </div>
+        <div class="breakdown-scroll">
+          <div class="breakdown-table">
+            <div class="breakdown-head">
+              <button class="sort-btn" type="button">group</button>
+              <button class="sort-btn num" type="button" data-group-sort="cost">spend <span class="sort-ind" data-group-sort-ind="cost"></span></button>
+              <button class="sort-btn" type="button">share &#183; composition</button>
+              <button class="sort-btn num" type="button" data-group-sort="calls">calls <span class="sort-ind" data-group-sort-ind="calls"></span></button>
+              <button class="sort-btn num" type="button" data-group-sort="tokens">tokens <span class="sort-ind" data-group-sort-ind="tokens"></span></button>
+              <button class="sort-btn num" type="button" data-group-sort="cache">cache <span class="sort-ind" data-group-sort-ind="cache"></span></button>
+              <button class="sort-btn num" type="button" data-group-sort="per_call">$/call <span class="sort-ind" data-group-sort-ind="per_call"></span></button>
+              <button class="sort-btn num" type="button" data-group-sort="per_mtok">$/Mtok <span class="sort-ind" data-group-sort-ind="per_mtok"></span></button>
+            </div>
+            <div id="breakdownRows"></div>
+          </div>
+        </div>
+        <div id="breakdownTotals" class="breakdown-totals" hidden></div>
+        <div id="breakdownPager" class="pager" hidden>
+          <span id="breakdownPagerStatus" class="pager-status"></span>
+          <span class="pager-buttons">
+            <button id="breakdownPrev" class="pager-btn" type="button">&#8592; prev</button>
+            <button id="breakdownNext" class="pager-btn" type="button">next &#8594;</button>
+          </span>
+        </div>
+      </div>
+      <aside class="rail" aria-label="Group details">
+        <div class="rail-panel">
+          <div class="rail-head">
+            <h2 class="panel-title"><span class="panel-title-dim">:: </span>group details</h2>
+          </div>
+          <div id="breakdownRail" class="rail-body">
+            <div class="rail-empty">&gt; click a group to see its cost composition</div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
     <section id="callsSection" class="work-section" aria-label="Model calls" hidden>
       <div class="panel">
         <div class="panel-head">
           <div class="panel-head-left">
             <div class="seg-group view-switch" role="group" aria-label="Dashboard view">
               <button class="view-btn" type="button" data-view="overview">overview</button>
+              <button class="view-btn" type="button" data-view="breakdown">breakdown</button>
               <button class="view-btn" type="button" data-view="calls">calls</button>
             </div>
             <h2 class="panel-title"><span class="panel-title-dim">:: </span>model calls</h2>

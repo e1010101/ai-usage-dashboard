@@ -114,10 +114,69 @@ def annotate_rollups_with_cost(
         copy = dict(group)
         model = copy.get("model")
         copy["estimated_cost_usd"] = estimate_cost_usd(copy, config, model=model)
+        copy.update(cost_components_usd(copy, config, model=model))
         copy["pricing_model"] = config.priced_as(model)
         copy["pricing_estimated"] = config.is_estimated_model(model)
         annotated.append(copy)
     return annotated
+
+
+def annotate_rows_with_cost_components(
+    rows: list[dict[str, Any]],
+    pricing: PricingConfig | None = None,
+    *,
+    model_field: str = "model",
+    pricing_path: Path = DEFAULT_PRICING_PATH,
+) -> list[dict[str, Any]]:
+    """Return copied rows with the per-component split of their cost estimate."""
+
+    config = pricing or load_pricing_config(pricing_path)
+    annotated: list[dict[str, Any]] = []
+    for row in rows:
+        copy = dict(row)
+        copy.update(cost_components_usd(copy, config, model=copy.get(model_field)))
+        annotated.append(copy)
+    return annotated
+
+
+def cost_components_usd(
+    row: dict[str, Any], pricing: PricingConfig, *, model: object | None = None
+) -> dict[str, float | None]:
+    """Split an estimated cost into the token classes that produced it.
+
+    The three components sum to ``estimate_cost_usd`` exactly, so a breakdown
+    built from them reconciles with the headline spend total. Cache-creation
+    (cache write) tokens are reported separately and are not billed here,
+    because the local pricing schema carries no cache-write rate.
+    """
+
+    rates = pricing.rates_for(model if model is not None else row.get("model"))
+    input_rate = (rates or {}).get("input_per_million")
+    output_rate = (rates or {}).get("output_per_million")
+    if not rates or input_rate is None or output_rate is None:
+        return {
+            "cost_uncached_input_usd": None,
+            "cost_cached_input_usd": None,
+            "cost_output_usd": None,
+        }
+    cached_rate = rates.get("cached_input_per_million", input_rate)
+    if cached_rate is None:
+        return {
+            "cost_uncached_input_usd": None,
+            "cost_cached_input_usd": None,
+            "cost_output_usd": None,
+        }
+
+    cached_input = _number(row.get("cached_input_tokens"))
+    uncached_input = _number(row.get("uncached_input_tokens"))
+    if uncached_input <= 0:
+        uncached_input = max(_number(row.get("input_tokens")) - cached_input, 0.0)
+
+    return {
+        "cost_uncached_input_usd": (uncached_input * input_rate) / 1_000_000,
+        "cost_cached_input_usd": (cached_input * cached_rate) / 1_000_000,
+        "cost_output_usd": (_number(row.get("output_tokens")) * output_rate) / 1_000_000,
+    }
 
 
 def estimate_cost_usd(
