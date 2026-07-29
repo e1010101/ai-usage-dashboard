@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Make the dashboard row-limit picker explicit: selecting a value arms a `[ load ]` button instead of fetching immediately, with in-flight state and a result note reporting how many calls loaded and how far back per-call history now reaches.
+- Space automatic dashboard refreshes off the previous refresh's duration instead of a fixed 10s interval, so a large index no longer runs refreshes back to back.
+
 - Add a dashboard `breakdown` view grouping range cost by model, project, thread, effort, thread type, provider, or day, with cost composition bars, unit rates, a totals row, drill-in details, and CSV export.
 - Add a header `rows` picker so the loaded per-call slice can be raised to 15,000, 50,000, or all rows, with the transfer cost stated up front and confirmed before heavy loads.
 - Keep spend totals exact while searching by answering thread/model/project/provider terms from complete rollups instead of the truncated row slice.

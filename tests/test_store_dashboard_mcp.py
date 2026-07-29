@@ -922,6 +922,24 @@ def test_dashboard_overview_and_calls_contract(tmp_path: Path) -> None:
     assert 'raise "rows" in the header to load more' in dashboard_js
     assert "limit: state.rowLimit" in dashboard_js
     assert ".rows-picker" in dashboard_css
+    # Picking a row limit only arms the control; the fetch is explicit, because
+    # a deep slice is slow enough that an implicit fetch reads as a no-op.
+    assert 'id="rowLimitApply"' in dashboard
+    assert 'id="rowLoadNote"' in dashboard
+    assert "loadRowSlice" in dashboard_js
+    assert "reportRowLoad" in dashboard_js
+    assert "pendingRowLimit" in dashboard_js
+    assert "rowLoadInFlight" in dashboard_js
+    assert ".rows-apply" in dashboard_css
+    assert ".row-load-note" in dashboard_css
+    # Auto-refresh spacing adapts to how long a refresh actually takes; a fixed
+    # interval plus queue-on-completion produced back-to-back refreshes on a
+    # large index.
+    assert "nextRefreshDelayMs" in dashboard_js
+    assert "REFRESH_BACKOFF_FACTOR" in dashboard_js
+    assert "MAX_REFRESH_INTERVAL_MS" in dashboard_js
+    assert "lastRefreshDurationMs" in dashboard_js
+    assert "window.setInterval" not in dashboard_js
 
     # Breakdown view: grouped cost table with composition, totals, and export.
     assert 'id="breakdownSection"' in dashboard

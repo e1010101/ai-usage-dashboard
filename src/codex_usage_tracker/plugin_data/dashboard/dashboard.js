@@ -75,6 +75,9 @@
   const customEndEl = el('customEnd');
   const providerSwitchEl = el('providerSwitch');
   const rowLimitEl = el('rowLimit');
+  const rowLimitApplyEl = el('rowLimitApply');
+  const rowLoadNoteEl = el('rowLoadNote');
+  let rowLoadNoteTimer = null;
   const filtersToggleEl = el('filtersToggle');
   const filtersPopoverEl = el('filtersPopover');
   const rangeNounEl = el('rangeNoun');
@@ -139,7 +142,11 @@
     provider: initialState.provider || '',
     search: initialState.search || '',
     tokensMetric: initialState.tokensMetric === 'uncached' ? 'uncached' : 'all',
+    // rowLimit is what is actually loaded; pendingRowLimit is what the picker
+    // shows. They diverge until the reader presses [ load ], because pulling a
+    // deep slice is a slow, heavy fetch that should never fire on a stray click.
     rowLimit: ROW_LIMITS.has(initialState.rowLimit) ? initialState.rowLimit : limitValue(loadedLimit),
+    pendingRowLimit: ROW_LIMITS.has(initialState.rowLimit) ? initialState.rowLimit : limitValue(loadedLimit),
     groupBy: GROUP_BYS.has(initialState.groupBy) ? initialState.groupBy : 'model',
     groupSort: GROUP_SORTS.has(initialState.groupSort) ? initialState.groupSort : 'cost',
     groupDir: initialState.groupDir || '',
@@ -727,20 +734,25 @@
       rowLimitEl.disabled = true;
       rowLimitEl.title = 'Static snapshot: regenerate the dashboard with --limit to change how many calls are embedded.';
       rowLimitEl.value = limitValue(loadedLimit);
+      if (rowLimitApplyEl) {
+        rowLimitApplyEl.disabled = true;
+        rowLimitApplyEl.textContent = '[ static ]';
+        rowLimitApplyEl.title = 'A static snapshot cannot fetch more rows.';
+      }
       return;
     }
     // A server started with a custom --limit lands on a value the fixed option
     // list does not carry; surface it rather than silently showing a blank box.
-    if (!optionValueExists(rowLimitEl, state.rowLimit)) {
+    if (!optionValueExists(rowLimitEl, state.pendingRowLimit)) {
       const option = document.createElement('option');
-      option.value = state.rowLimit;
-      option.textContent = state.rowLimit === 'all' ? 'all' : number.format(Number(state.rowLimit) || 0);
+      option.value = state.pendingRowLimit;
+      option.textContent = state.pendingRowLimit === 'all' ? 'all' : number.format(Number(state.pendingRowLimit) || 0);
       rowLimitEl.prepend(option);
     }
-    if (rowLimitEl.value !== state.rowLimit) rowLimitEl.value = state.rowLimit;
-    const requested = rowLimitCount(state.rowLimit);
-    const capped = totalAvailableRows && requested >= totalAvailableRows;
-    rowLimitEl.dataset.heavy = requested > 50000 ? 'true' : 'false';
+    if (rowLimitEl.value !== state.pendingRowLimit) rowLimitEl.value = state.pendingRowLimit;
+    const requested = rowLimitCount(state.pendingRowLimit);
+    const capped = totalAvailableRows && rowLimitCount(state.rowLimit) >= totalAvailableRows;
+    rowLimitEl.dataset.heavy = requested > HEAVY_ROW_THRESHOLD ? 'true' : 'false';
     rowLimitEl.title = [
       `Loaded ${number.format(data.length)} of ${number.format(totalAvailableRows)} calls in range.`,
       capped
@@ -748,6 +760,23 @@
         : `Raising this loads more per-call history (${approxPayloadLabel(requested)} of JSON) so the calls table, timelines and text search reach further back.`,
       'Spend totals, the chart, the ledger and the breakdown already cover the whole range at any setting.',
     ].join(' ');
+    if (!rowLimitApplyEl) return;
+    // The button is the only thing that starts the fetch, so it has to say
+    // plainly whether there is anything to load and what it will cost.
+    const dirty = state.pendingRowLimit !== state.rowLimit;
+    if (rowLoadInFlight) {
+      rowLimitApplyEl.disabled = true;
+      rowLimitApplyEl.dataset.state = 'busy';
+      rowLimitApplyEl.textContent = '[ loading… ]';
+      rowLimitApplyEl.title = `Fetching up to ${number.format(rowLimitCount(state.rowLimit))} calls (${approxPayloadLabel(rowLimitCount(state.rowLimit))}). This can take a while on a large index.`;
+      return;
+    }
+    rowLimitApplyEl.disabled = !dirty;
+    rowLimitApplyEl.dataset.state = dirty ? 'dirty' : 'clean';
+    rowLimitApplyEl.textContent = dirty ? '[ load ]' : '[ loaded ]';
+    rowLimitApplyEl.title = dirty
+      ? `Load ${number.format(requested)} calls (${approxPayloadLabel(requested)}). Only the calls table, per-call timelines and branch/path search change — totals, chart, ledger and breakdown already cover the whole range.`
+      : `${number.format(data.length)} calls loaded. Pick a different value to load more.`;
   }
 
   function renderFiltersPopover(scope) {
@@ -1933,10 +1962,24 @@
   /* ---- Live refresh ---- */
   const liveRefreshSupported = window.location.protocol !== 'file:';
   const liveRefreshIntervalMs = 10000;
+  // A refresh on a large index can take far longer than the poll interval. A
+  // fixed interval plus queue-on-completion turns that into back-to-back
+  // refreshes with no idle gap, so the next poll is spaced off how long the
+  // last one actually took.
+  const REFRESH_BACKOFF_FACTOR = 1.5;
+  const MAX_REFRESH_INTERVAL_MS = 300000;
+  let lastRefreshDurationMs = 0;
   let autoRefreshEnabled = true;
   let autoRefreshTimer = null;
   let refreshInFlight = false;
   let refreshQueued = false;
+  let rowLoadInFlight = false;
+  function nextRefreshDelayMs() {
+    return Math.min(
+      MAX_REFRESH_INTERVAL_MS,
+      Math.max(liveRefreshIntervalMs, Math.round(lastRefreshDurationMs * REFRESH_BACKOFF_FACTOR)),
+    );
+  }
   const reducedMotionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
 
   function updateLiveStatus(label, detail = '') {
@@ -1987,11 +2030,14 @@
       return;
     }
     if (refreshInFlight) {
-      refreshQueued = true;
+      // Only an explicit request is worth repeating; a skipped automatic poll
+      // is picked up by the next scheduled tick instead of stacking up.
+      if (manual) refreshQueued = true;
       return;
     }
     refreshInFlight = true;
     const requestedRows = rowLimitCount(state.rowLimit);
+    const startedAt = Date.now();
     updateLiveStatus(
       manual ? 'Refreshing' : 'Checking',
       manual
@@ -2026,13 +2072,17 @@
       const nextPayload = await response.json();
       if (nextPayload.error) throw new Error(nextPayload.error);
       applyDashboardPayload(nextPayload);
+      lastRefreshDurationMs = Date.now() - startedAt;
       updateLiveStatus(
         autoRefreshEnabled ? 'live' : 'paused',
-        `Updated ${formatTimestamp(nextPayload.refreshed_at)}. Loaded ${number.format(data.length)} of ${number.format(totalAvailableRows || data.length)} rows in range. Click to ${autoRefreshEnabled ? 'pause' : 'resume'} live refresh.`,
+        `Updated ${formatTimestamp(nextPayload.refreshed_at)}. Loaded ${number.format(data.length)} of ${number.format(totalAvailableRows || data.length)} rows in range. `
+        + `Last refresh took ${(lastRefreshDurationMs / 1000).toFixed(1)}s, so the next automatic check is in ~${Math.round(nextRefreshDelayMs() / 1000)}s. `
+        + `Click to ${autoRefreshEnabled ? 'pause' : 'resume'} live refresh.`,
       );
       pulseLiveStatus();
     } catch (error) {
       const message = error.message || String(error);
+      lastRefreshDurationMs = Date.now() - startedAt;
       updateLiveStatus('refresh error', `Live refresh unavailable: ${message}${manual ? '. Reload this page after regenerating a static dashboard, or run ai-usage-dashboard serve-dashboard.' : ''}`);
       if (manual && message === 'HTTP 404') window.location.reload();
       // A 403 means this page's embedded API token belongs to a previous
@@ -2050,17 +2100,73 @@
       refreshInFlight = false;
       if (refreshQueued) {
         refreshQueued = false;
-        refreshDashboardData(manual);
+        await refreshDashboardData(true);
       }
     }
   }
+  // Explicitly pulling a deeper row slice. Kept separate from the automatic
+  // poll because it is slow and heavy, and because the reader needs to be told
+  // what actually changed — on the overview tab, nothing visibly does.
+  async function loadRowSlice() {
+    if (rowLoadInFlight || state.pendingRowLimit === state.rowLimit) return;
+    const requested = rowLimitCount(state.pendingRowLimit);
+    if (requested > HEAVY_ROW_THRESHOLD && !confirmHeavyRowLoad(requested)) {
+      state.pendingRowLimit = state.rowLimit;
+      render();
+      return;
+    }
+    const before = { rows: data.length, oldest: oldestLoadedMs };
+    rowLoadInFlight = true;
+    state.rowLimit = state.pendingRowLimit;
+    state.page = 1;
+    render();
+    try {
+      // An automatic poll may already be mid-flight; refreshDashboardData would
+      // just queue behind it and return immediately, making the load look
+      // instant and reporting a bogus "no change". Wait it out first.
+      while (refreshInFlight) {
+        await new Promise(resolve => window.setTimeout(resolve, 200));
+      }
+      await refreshDashboardData(true);
+    } finally {
+      rowLoadInFlight = false;
+      state.pendingRowLimit = state.rowLimit;
+      render();
+      reportRowLoad(before);
+      scheduleAutoRefresh();
+    }
+  }
+  function reportRowLoad(before) {
+    if (!rowLoadNoteEl) return;
+    const gained = data.length - before.rows;
+    const reach = oldestLoadedMs !== null ? fullDayFormat.format(new Date(oldestLoadedMs)) : 'unknown';
+    const parts = [
+      `loaded ${number.format(data.length)} of ${number.format(totalAvailableRows)} calls`,
+      gained > 0 ? `+${number.format(gained)} more` : gained < 0 ? `${number.format(gained)} fewer` : 'no change',
+      `per-call history now reaches back to ${reach}`,
+    ];
+    rowLoadNoteEl.hidden = false;
+    rowLoadNoteEl.textContent = `i ${parts.join(' · ')} — totals, chart, ledger and breakdown already covered the full range`;
+    if (rowLoadNoteTimer) window.clearTimeout(rowLoadNoteTimer);
+    rowLoadNoteTimer = window.setTimeout(() => {
+      rowLoadNoteEl.hidden = true;
+    }, 12000);
+  }
+
+  // Self-rescheduling rather than setInterval: each tick is spaced off the
+  // previous refresh's duration, so a slow index backs off instead of queueing
+  // refreshes end to end.
   function scheduleAutoRefresh() {
-    if (autoRefreshTimer) window.clearInterval(autoRefreshTimer);
+    if (autoRefreshTimer) window.clearTimeout(autoRefreshTimer);
     autoRefreshTimer = null;
     if (!autoRefreshEnabled || !liveRefreshSupported) return;
-    autoRefreshTimer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') refreshDashboardData(false);
-    }, liveRefreshIntervalMs);
+    autoRefreshTimer = window.setTimeout(async () => {
+      autoRefreshTimer = null;
+      if (document.visibilityState === 'visible' && !rowLoadInFlight) {
+        await refreshDashboardData(false);
+      }
+      scheduleAutoRefresh();
+    }, nextRefreshDelayMs());
   }
 
   /* ---- On-demand aggregate row detail ---- */
@@ -2175,18 +2281,13 @@
     setState({ provider: button.dataset.provider || '' }, { resetPages: true, clearSelection: true });
   });
   if (rowLimitEl) {
+    // Picking a value only arms the control; nothing is fetched until [ load ].
     rowLimitEl.addEventListener('change', () => {
-      const next = rowLimitEl.value;
-      // Loading every call of a large index is a genuinely heavy operation that
-      // an accidental click should not trigger, so the cost is confirmed before
-      // the fetch rather than explained after the tab stalls.
-      const requested = rowLimitCount(next);
-      if (requested > HEAVY_ROW_THRESHOLD && !confirmHeavyRowLoad(requested)) {
-        rowLimitEl.value = state.rowLimit;
-        return;
-      }
-      setState({ rowLimit: next }, { resetPages: true, refetch: true });
+      setState({ pendingRowLimit: rowLimitEl.value });
     });
+  }
+  if (rowLimitApplyEl) {
+    rowLimitApplyEl.addEventListener('click', () => loadRowSlice());
   }
   filtersToggleEl.addEventListener('click', () => {
     setState({ showFilters: !state.showFilters });
