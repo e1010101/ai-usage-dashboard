@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Migrate the MCP server to the mcp 2.0 SDK (`mcp.server.MCPServer` replaces the removed `mcp.server.fastmcp.FastMCP`) and require `mcp>=2.0.0`.
 - Add tested JSON contract validation for stable CLI and MCP payload schemas.
 - Add schema markers to doctor, pricing coverage, MCP dashboard/export/config, and opt-in context payloads.
 - Add ranked CLI/MCP recommendations with severity score, primary recommendation, secondary signals, and thread rollups.

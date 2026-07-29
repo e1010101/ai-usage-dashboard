@@ -489,7 +489,7 @@ def _check_mcp_runtime(repo_root: Path | None) -> DoctorCheck:
     if isinstance(configured_env, dict):
         env.update({str(key): str(value) for key, value in configured_env.items()})
     cwd = _resolve_mcp_cwd(server.get("cwd"), repo_root)
-    check = "import codex_usage_tracker.mcp_server; import mcp.server.fastmcp"
+    check = "import codex_usage_tracker.mcp_server; from mcp.server import MCPServer"
     try:
         result = subprocess.run(
             [command, "-c", check],
@@ -606,12 +606,12 @@ def _check_mcp_import() -> DoctorCheck:
             "MCP server module could not be found.",
             'Install dependencies with: python -m pip install ".[dev]"',
         )
-    sdk_spec = importlib.util.find_spec("mcp.server.fastmcp")
-    if sdk_spec is None:
+    sdk_spec = importlib.util.find_spec("mcp.server")
+    if sdk_spec is None or not hasattr(importlib.import_module("mcp.server"), "MCPServer"):
         return DoctorCheck(
             "MCP module",
             "fail",
-            "FastMCP SDK dependency could not be found.",
+            "MCP SDK dependency could not be found, or is older than the required mcp 2.0 API.",
             'Install dependencies with: python -m pip install ".[dev]"',
         )
     return DoctorCheck("MCP module", "pass", "MCP server module is discoverable.")
