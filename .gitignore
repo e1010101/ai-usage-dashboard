@@ -25,3 +25,10 @@ dist/
 tmp/
 .cache/
 .codex/
+
+# Agent tooling: shared skills and instructions are tracked, local overrides are not.
+.claude/settings.local.json
+
+# Design handoffs arrive as archives and are committed extracted, so the
+# downloaded bundle is redundant once unpacked under docs/.
+docs/*.zip
