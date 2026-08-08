@@ -23,6 +23,7 @@
 - Split dashboard JavaScript helpers into formatting, data, state, and rendering/runtime assets.
 - Add issue templates for bugs, parser compatibility, pricing/allowance issues, and feature requests.
 - Expand security guidance for project metadata privacy, support bundles, and localhost dashboard tokens.
+- Fix a second `serve-dashboard` start clobbering the running server's page: the socket now binds before the dashboard is generated, so a port conflict fails with an actionable error instead of overwriting the live dashboard's API token (which left every refresh returning 403); on Windows the port is claimed exclusively so a second instance cannot silently steal connections.
 
 ## 0.2.0
 
