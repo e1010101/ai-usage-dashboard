@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix `update-pricing` for the OpenAI docs' new plain-Markdown pricing tables: parse `### <Tier> pricing data` tables first (matching columns by header name so short-context rates are never confused with long-context bands, and accepting the Fast heading for `--tier priority`), keeping the legacy `<TextTokenPricingTables>` component parser as a fallback for archived snapshots.
+
 - Make the dashboard row-limit picker explicit: selecting a value arms a `[ load ]` button instead of fetching immediately, with in-flight state and a result note reporting how many calls loaded and how far back per-call history now reaches.
 - Space automatic dashboard refreshes off the previous refresh's duration instead of a fixed 10s interval, so a large index no longer runs refreshes back to back.
 

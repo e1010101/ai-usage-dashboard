@@ -115,9 +115,7 @@ def update_pricing_from_openai_docs(
     anthropic_model_count = 0
     if include_anthropic:
         anthropic_fetcher = fetch_anthropic_text or fetcher
-        anthropic_models = parse_anthropic_pricing_markdown(
-            anthropic_fetcher(anthropic_source_url)
-        )
+        anthropic_models = parse_anthropic_pricing_markdown(anthropic_fetcher(anthropic_source_url))
         models.update({model: dict(rates) for model, rates in anthropic_models.items()})
         aliases = {**ANTHROPIC_COMPATIBILITY_ALIASES, **aliases}
         anthropic_model_count = len(anthropic_models)
@@ -135,9 +133,7 @@ def update_pricing_from_openai_docs(
         # Estimates only fill gaps: a source-published row always wins over an
         # internal best-guess entry, so stale estimates cannot mask real prices.
         estimates = {
-            model: rates
-            for model, rates in estimated_model_prices().items()
-            if model not in models
+            model: rates for model, rates in estimated_model_prices().items() if model not in models
         }
         models.update(estimates)
         estimated_model_count = len(estimates)
@@ -202,6 +198,18 @@ def parse_openai_pricing_markdown(
         raise ValueError(
             f"unknown pricing tier {tier!r}; expected one of {', '.join(VALID_PRICING_TIERS)}"
         )
+    # The docs replaced <TextTokenPricingTables .../> component markup with plain
+    # Markdown tables under "### <Tier> pricing data" headings in August 2026.
+    # Try the current layout first and keep the component parser as a fallback so
+    # archived snapshots still parse.
+    table = _find_tier_markdown_table(markdown, tier)
+    if table is not None:
+        header_cells, body_rows = table
+        return _parse_tier_markdown_table(header_cells, body_rows, tier)
+    return _parse_legacy_component_rows(markdown, tier)
+
+
+def _parse_legacy_component_rows(markdown: str, tier: str) -> dict[str, dict[str, float]]:
     rows_block = _extract_text_token_rows_block(markdown, tier)
     models: dict[str, dict[str, float]] = {}
     for match in _OPENAI_PRICE_ROW_RE.finditer(rows_block):
@@ -209,9 +217,7 @@ def parse_openai_pricing_markdown(
         # Row shapes vary: [input, cached, output] or, since the cache-write
         # column landed, [input, cached, cache_write, output]. Input is always
         # first, cached input second, and output last.
-        values = [
-            _parse_openai_price_value(cell) for cell in match.group("values").split(",")
-        ]
+        values = [_parse_openai_price_value(cell) for cell in match.group("values").split(",")]
         if not model or len(values) < 2:
             continue
         input_rate = values[0]
@@ -242,6 +248,129 @@ _OPENAI_PRICE_ROW_RE = re.compile(
     re.VERBOSE,
 )
 
+# Priority processing was renamed Fast mode on 2026-07-30; the --tier flag keeps
+# accepting "priority", so both headings must resolve that tier.
+_TIER_HEADING_NAMES = {
+    "standard": ("standard",),
+    "batch": ("batch",),
+    "flex": ("flex",),
+    "priority": ("priority", "fast"),
+}
+
+_TIER_HEADING_RE = re.compile(r"^###\s+(?P<name>\S+)\s+pricing data\s*$", re.IGNORECASE)
+
+
+def _find_tier_markdown_table(markdown: str, tier: str) -> tuple[list[str], list[list[str]]] | None:
+    """Locate the tier's "### <Tier> pricing data" table; None means legacy layout."""
+
+    heading_names = _TIER_HEADING_NAMES[tier]
+    lines = markdown.splitlines()
+    for index, line in enumerate(lines):
+        match = _TIER_HEADING_RE.match(line.strip())
+        if not match or match.group("name").lower() not in heading_names:
+            continue
+        return _read_markdown_table(lines, index + 1, tier)
+    return None
+
+
+def _read_markdown_table(
+    lines: list[str], start: int, tier: str
+) -> tuple[list[str], list[list[str]]]:
+    for index in range(start, len(lines)):
+        line = lines[index]
+        if line.lstrip().startswith("###"):
+            break
+        if "|" not in line:
+            continue
+        header_cells = _split_table_row(line)
+        body_rows: list[list[str]] = []
+        for row_line in lines[index + 1 :]:
+            if "|" not in row_line:
+                break
+            if _is_table_separator_row(row_line):
+                continue
+            body_rows.append(_split_table_row(row_line))
+        return header_cells, body_rows
+    raise PricingParseError(
+        f"pricing source schema changed: tier {tier!r} pricing-data heading is not "
+        "followed by a Markdown table"
+    )
+
+
+def _split_table_row(line: str) -> list[str]:
+    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+
+def _is_table_separator_row(line: str) -> bool:
+    return re.fullmatch(r"[\s|:\-]+", line) is not None
+
+
+def _parse_tier_markdown_table(
+    header_cells: list[str], body_rows: list[list[str]], tier: str
+) -> dict[str, dict[str, float]]:
+    input_index, cached_index, output_index = _text_token_column_indexes(header_cells, tier)
+    models: dict[str, dict[str, float]] = {}
+    for cells in body_rows:
+        if len(cells) != len(header_cells):
+            continue
+        model = _normalize_model_name(cells[0])
+        if not model or model in models:
+            continue
+        input_rate = _parse_price_cell(cells[input_index], tier=tier)
+        output_rate = _parse_price_cell(cells[output_index], tier=tier)
+        cached_rate = (
+            _parse_price_cell(cells[cached_index], tier=tier) if cached_index is not None else None
+        )
+        if input_rate is None or output_rate is None:
+            continue
+        models[model] = {
+            "input_per_million": input_rate,
+            "cached_input_per_million": cached_rate if cached_rate is not None else input_rate,
+            "output_per_million": output_rate,
+        }
+    if not models:
+        raise PricingParseError(
+            f"pricing source schema changed: tier {tier!r} Markdown pricing table "
+            "contained no parseable text-token pricing rows"
+        )
+    return models
+
+
+def _text_token_column_indexes(header_cells: list[str], tier: str) -> tuple[int, int | None, int]:
+    # The tables carry short- and long-context price bands side by side, so
+    # columns must be matched by header name: positional reads would silently
+    # return long-context rates instead of failing.
+    normalized = [re.sub(r"\s+", " ", cell).strip().lower() for cell in header_cells]
+
+    def find(*names: str) -> int | None:
+        for name in names:
+            if name in normalized:
+                return normalized.index(name)
+        return None
+
+    input_index = find("short context input", "input")
+    cached_index = find("short context cached input", "cached input")
+    output_index = find("short context output", "output")
+    if input_index is None or output_index is None:
+        raise PricingParseError(
+            f"pricing source schema changed: tier {tier!r} Markdown pricing table is "
+            "missing the short-context input/output columns"
+        )
+    return input_index, cached_index, output_index
+
+
+def _parse_price_cell(cell: str, *, tier: str) -> float | None:
+    normalized = re.sub(r"\s+", " ", cell).strip()
+    if normalized.lower() in {"", "-", "—", "n/a", "free"}:
+        return None
+    match = re.fullmatch(r"\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?)", normalized)
+    if not match:
+        raise PricingParseError(
+            f"pricing source schema changed: could not parse tier {tier!r} "
+            f"price cell {normalized!r}"
+        )
+    return float(match.group(1).replace(",", ""))
+
 
 def _fetch_text(url: str) -> str:
     request = Request(
@@ -271,8 +400,12 @@ def _extract_text_token_rows_block(markdown: str, tier: str) -> str:
     tier_marker = f'tier="{tier}"'
     tier_index = markdown.find(tier_marker)
     if tier_index == -1:
+        headings = " or ".join(
+            f"'### {name.title()} pricing data'" for name in _TIER_HEADING_NAMES[tier]
+        )
         raise PricingParseError(
-            f"pricing source schema changed: could not find text-token tier marker {tier_marker!r}"
+            f"pricing source schema changed: could not find a {headings} Markdown "
+            f"table or legacy text-token tier marker {tier_marker!r}"
         )
     search_end = _pricing_component_end(markdown, tier_index)
     rows_marker_index = markdown.find("rows={[", tier_index, search_end)
@@ -339,11 +472,7 @@ def _parse_openai_price_value(value: str) -> float | None:
     normalized = value.strip()
     if normalized in {"", "null", "undefined", "-", '""', "''", '"-"', "'-'"}:
         return None
-    if (
-        len(normalized) >= 2
-        and normalized[0] == normalized[-1]
-        and normalized[0] in {'"', "'"}
-    ):
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {'"', "'"}:
         normalized = normalized[1:-1].strip()
     if normalized in {"", "-", "Free"}:
         return None
