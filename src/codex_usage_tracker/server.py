@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import errno
 import hmac
 import json
 import secrets
+import socket
 import sqlite3
 import threading
 import time
@@ -76,27 +78,9 @@ def serve_dashboard(
     _validate_context_api_mode(context_api)
     api_token = secrets.token_urlsafe(32)
     context_api_enabled = context_api != "disabled"
-    output = generate_dashboard(
-        db_path=db_path,
-        output_path=output_path,
-        limit=limit,
-        pricing_path=pricing_path,
-        allowance_path=allowance_path,
-        rate_card_path=rate_card_path,
-        claude_limits_path=claude_limits_path,
-        codex_home=codex_home,
-        since=since,
-        api_token=api_token,
-        context_api_enabled=context_api_enabled,
-        thresholds_path=thresholds_path,
-        projects_path=projects_path,
-        privacy_mode=privacy_mode,
-        include_archived=include_archived,
-        limit_history_path=limit_history_path,
-    )
     handler = partial(
         _UsageDashboardHandler,
-        directory=str(output.parent),
+        directory=str(output_path.parent),
         db_path=db_path,
         pricing_path=pricing_path,
         allowance_path=allowance_path,
@@ -112,7 +96,7 @@ def serve_dashboard(
         hermes_home=hermes_home,
         source=source,
         include_archived=include_archived,
-        dashboard_name=output.name,
+        dashboard_name=output_path.name,
         context_chars=context_chars,
         api_token=api_token,
         context_api_enabled=context_api_enabled,
@@ -120,20 +104,77 @@ def serve_dashboard(
         refresh_state={},
         limit_history_path=limit_history_path,
     )
-    server = ThreadingHTTPServer((host, port), handler)
-    url = f"http://{_url_host(host)}:{port}/{output.name}"
-    print(f"Serving Codex usage dashboard at {url}")
-    context_mode = "enabled for explicit row actions" if context_api_enabled else "disabled"
-    print("Aggregate rows refresh through /api/usage with a per-server token.")
-    print(f"Raw context API is {context_mode}; context is never embedded in the dashboard HTML.")
-    if open_browser:
-        webbrowser.open(url)
+    server = _bind_dashboard_server(host, port, handler)
     try:
+        # Generate only after the socket is bound: the output path and port both
+        # default to fixed locations, so a second instance racing for the port
+        # must fail here, before it can overwrite the live server's dashboard
+        # with an API token that server never issued (every refresh would 403,
+        # and the page reloads the same clobbered file instead of recovering).
+        generate_dashboard(
+            db_path=db_path,
+            output_path=output_path,
+            limit=limit,
+            pricing_path=pricing_path,
+            allowance_path=allowance_path,
+            rate_card_path=rate_card_path,
+            claude_limits_path=claude_limits_path,
+            codex_home=codex_home,
+            since=since,
+            api_token=api_token,
+            context_api_enabled=context_api_enabled,
+            thresholds_path=thresholds_path,
+            projects_path=projects_path,
+            privacy_mode=privacy_mode,
+            include_archived=include_archived,
+            limit_history_path=limit_history_path,
+        )
+        url = f"http://{_url_host(host)}:{port}/{output_path.name}"
+        print(f"Serving Codex usage dashboard at {url}")
+        context_mode = "enabled for explicit row actions" if context_api_enabled else "disabled"
+        print("Aggregate rows refresh through /api/usage with a per-server token.")
+        print(
+            f"Raw context API is {context_mode}; context is never embedded in the dashboard HTML."
+        )
+        if open_browser:
+            webbrowser.open(url)
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nStopping dashboard server.")
     finally:
         server.server_close()
+
+
+class _DashboardHTTPServer(ThreadingHTTPServer):
+    # On Windows, SO_REUSEADDR lets a second server bind a port that is being
+    # actively served (socket-hijack semantics) instead of failing with
+    # EADDRINUSE, so a doomed second start would silently steal connections.
+    # Claim the port exclusively there; POSIX keeps the inherited SO_REUSEADDR,
+    # which only recycles TIME_WAIT sockets and never an active listener.
+    _exclusive_port_option = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+    allow_reuse_address = _exclusive_port_option is None
+
+    def server_bind(self) -> None:
+        if self._exclusive_port_option is not None:
+            self.socket.setsockopt(socket.SOL_SOCKET, self._exclusive_port_option, 1)
+        super().server_bind()
+
+
+_ADDR_IN_USE_ERRNOS = {errno.EADDRINUSE, getattr(errno, "WSAEADDRINUSE", errno.EADDRINUSE)}
+
+
+def _bind_dashboard_server(
+    host: str, port: int, handler: partial[_UsageDashboardHandler]
+) -> ThreadingHTTPServer:
+    try:
+        return _DashboardHTTPServer((host, port), handler)
+    except OSError as exc:
+        if exc.errno in _ADDR_IN_USE_ERRNOS:
+            raise RuntimeError(
+                f"port {port} on {host} is already in use, likely by another running "
+                "serve-dashboard instance; stop it or rerun with --port <number>"
+            ) from exc
+        raise
 
 
 class _UsageDashboardHandler(SimpleHTTPRequestHandler):
@@ -193,7 +234,9 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - stdlib hook name
         parsed = urlparse(self.path)
         if not self._request_origin_allowed():
-            self._send_json(HTTPStatus.FORBIDDEN, {"error": "Request host or origin is not allowed"})
+            self._send_json(
+                HTTPStatus.FORBIDDEN, {"error": "Request host or origin is not allowed"}
+            )
             return
         if parsed.path == "/api/context":
             self._handle_context(parsed.query)
@@ -281,7 +324,9 @@ class _UsageDashboardHandler(SimpleHTTPRequestHandler):
         params = parse_qs(query)
         limit = _parse_limit(_first(params.get("limit")), self._limit)
         offset = _parse_offset(_first(params.get("offset")))
-        include_archived = _parse_bool(_first(params.get("include_archived")), self._include_archived)
+        include_archived = _parse_bool(
+            _first(params.get("include_archived")), self._include_archived
+        )
         since = _first(params.get("since")) or self._since
         until = _first(params.get("until")) or None
         refresh_result = None
@@ -504,9 +549,7 @@ def _validate_loopback_host(host: str) -> None:
     try:
         address = ip_address(host)
     except ValueError as exc:
-        raise ValueError(
-            "serve-dashboard --host must be localhost, 127.0.0.1, or ::1"
-        ) from exc
+        raise ValueError("serve-dashboard --host must be localhost, 127.0.0.1, or ::1") from exc
     if not address.is_loopback:
         raise ValueError("serve-dashboard refuses to expose raw context off localhost")
 

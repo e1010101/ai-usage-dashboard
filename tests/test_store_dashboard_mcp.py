@@ -151,11 +151,14 @@ def test_refresh_hermes_source_indexes_deepseek_sessions(tmp_path: Path) -> None
     assert rows[0]["model"] == "deepseek-v4-pro"
     assert rows[0]["effort"] == "xhigh"
     assert rows[0]["total_tokens"] == 920
-    assert query_dashboard_event_count(
-        db_path=db_path,
-        source_provider="deepseek",
-        effort="xhigh",
-    ) == 1
+    assert (
+        query_dashboard_event_count(
+            db_path=db_path,
+            source_provider="deepseek",
+            effort="xhigh",
+        )
+        == 1
+    )
 
 
 def test_provider_and_app_filters_work_for_dashboard_queries(tmp_path: Path) -> None:
@@ -289,12 +292,10 @@ def test_init_db_repairs_version_zero_schema(tmp_path: Path) -> None:
     with connect(db_path) as conn:
         init_db(conn)
         columns = {
-            row["name"]
-            for row in conn.execute("PRAGMA table_info(usage_events)").fetchall()
+            row["name"] for row in conn.execute("PRAGMA table_info(usage_events)").fetchall()
         }
         indexes = {
-            row["name"]
-            for row in conn.execute("PRAGMA index_list(usage_events)").fetchall()
+            row["name"] for row in conn.execute("PRAGMA index_list(usage_events)").fetchall()
         }
         user_version = conn.execute("PRAGMA user_version").fetchone()[0]
         migrations = [
@@ -536,14 +537,16 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     dashboard_state_js = (asset_dir / "dashboard_state.js").read_text(encoding="utf-8")
     dashboard_css = (asset_dir / "dashboard.css").read_text(encoding="utf-8")
     favicon_svg = asset_dir / "favicon.svg"
-    dashboard_surface = "\n".join([
-        dashboard,
-        dashboard_format_js,
-        dashboard_data_js,
-        dashboard_js,
-        dashboard_state_js,
-        dashboard_css,
-    ])
+    dashboard_surface = "\n".join(
+        [
+            dashboard,
+            dashboard_format_js,
+            dashboard_data_js,
+            dashboard_js,
+            dashboard_state_js,
+            dashboard_css,
+        ]
+    )
     csv_text = csv_path.read_text(encoding="utf-8")
     assert exported == 4
     assert exported_with_zero_limit == 4
@@ -617,9 +620,9 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
         assert f'data-range="{preset}"' in dashboard
     assert 'id="customStart"' in dashboard
     assert 'id="customEnd"' in dashboard
-    assert '[ overview ]' in dashboard
-    assert '[ codex ]' in dashboard
-    assert '[ claude code ]' in dashboard
+    assert "[ overview ]" in dashboard
+    assert "[ codex ]" in dashboard
+    assert "[ claude code ]" in dashboard
     assert 'data-provider="openai"' in dashboard
     assert 'data-provider="anthropic"' in dashboard
     assert 'id="filtersToggle"' in dashboard
@@ -689,7 +692,10 @@ def test_dashboard_and_csv_are_aggregate_only(tmp_path: Path) -> None:
     assert "prefers-reduced-motion" in dashboard_js
     assert "sunset-pulse" in dashboard_js
     assert "Dashboard guide" in dashboard
-    assert "github.com/douglasmonsky/codex-usage-tracker/blob/main/docs/dashboard-guide.md" not in dashboard
+    assert (
+        "github.com/douglasmonsky/codex-usage-tracker/blob/main/docs/dashboard-guide.md"
+        not in dashboard
+    )
     assert "codex-usage-tracker-guide/dashboard-guide.html" in dashboard
     assert (tmp_path / "codex-usage-tracker-guide" / "dashboard-guide.html").exists()
     assert (tmp_path / "codex-usage-tracker-guide" / "assets" / "dashboard-calls.png").exists()
@@ -773,7 +779,11 @@ def test_dashboard_answer_strip_contract(tmp_path: Path) -> None:
 
     # The answer strip renders hero, spend chart, and limits cards in order.
     strip = dashboard.split('<section class="answer-strip"', 1)[1].split("</section>", 1)[0]
-    assert strip.index('id="heroCost"') < strip.index('id="chartBars"') < strip.index('id="limitsGroups"')
+    assert (
+        strip.index('id="heroCost"')
+        < strip.index('id="chartBars"')
+        < strip.index('id="limitsGroups"')
+    )
     assert ":: where did" in strip
     assert ":: limits remaining" in strip
     assert 'id="heroCostDelta"' in strip
@@ -906,7 +916,10 @@ def test_dashboard_overview_and_calls_contract(tmp_path: Path) -> None:
     assert "max-width: 1360px" in dashboard_css
     assert "grid-template-columns: minmax(0, 1.5fr) minmax(340px, 0.8fr)" in dashboard_css
     assert "grid-template-columns: 34px minmax(0, 1fr) 90px 90px 96px" in dashboard_css
-    assert "grid-template-columns: 92px minmax(0, 1.4fr) minmax(0, 1fr) 64px 74px 82px 60px 90px" in dashboard_css
+    assert (
+        "grid-template-columns: 92px minmax(0, 1.4fr) minmax(0, 1fr) 64px 74px 82px 60px 90px"
+        in dashboard_css
+    )
     assert "min-width: 760px" in dashboard_css
     assert ".popover-anchor" in dashboard_css
     assert "min-width: 520px" in dashboard_css
@@ -1170,8 +1183,7 @@ def test_dashboard_payload_uses_dynamic_codex_allowance_windows(tmp_path: Path) 
     assert payload["allowance_configured"] is True
     assert payload["allowance_window_source"]["name"] == "Local Codex rate-limit snapshot"
     assert [
-        (window["key"], window["remaining_percent"])
-        for window in payload["allowance_windows"]
+        (window["key"], window["remaining_percent"]) for window in payload["allowance_windows"]
     ] == [
         ("five_hour", 0.6),
         ("weekly", 0.9),
@@ -1228,6 +1240,40 @@ def test_dashboard_payload_exposes_claude_limit_windows(tmp_path: Path) -> None:
         ("five_hour", "5h", 0.2),
         ("weekly", "7d", 0.75),
     ]
+
+
+def test_serve_dashboard_port_conflict_keeps_running_server_page(tmp_path: Path) -> None:
+    from http.server import SimpleHTTPRequestHandler
+
+    from codex_usage_tracker.server import serve_dashboard
+
+    codex_home = _make_codex_home(tmp_path)
+    db_path = tmp_path / "usage.sqlite3"
+    refresh_usage_index(codex_home=codex_home, db_path=db_path)
+    output_path = tmp_path / "dashboard.html"
+    live_page = b"<html>page carrying the running server's API token</html>"
+    output_path.write_bytes(live_page)
+    blocker = ThreadingHTTPServer(("127.0.0.1", 0), SimpleHTTPRequestHandler)
+    try:
+        try:
+            serve_dashboard(
+                db_path=db_path,
+                output_path=output_path,
+                pricing_path=tmp_path / "pricing.json",
+                allowance_path=tmp_path / "allowance.json",
+                port=blocker.server_port,
+                codex_home=codex_home,
+            )
+        except RuntimeError as exc:
+            assert "already in use" in str(exc)
+            assert "--port" in str(exc)
+        else:
+            raise AssertionError("expected RuntimeError for the occupied port")
+    finally:
+        blocker.server_close()
+    # The doomed start must fail before regenerating the page, so the running
+    # server's dashboard (and its embedded API token) survives byte-identical.
+    assert output_path.read_bytes() == live_page
 
 
 def test_dashboard_server_usage_api_refreshes_aggregate_rows(tmp_path: Path) -> None:
@@ -1624,9 +1670,7 @@ def test_dashboard_server_returns_json_for_sqlite_errors(tmp_path: Path, monkeyp
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        usage_error = _http_error_json(
-            f"http://127.0.0.1:{server.server_port}/api/usage"
-        )
+        usage_error = _http_error_json(f"http://127.0.0.1:{server.server_port}/api/usage")
         context_error = _http_error_json(
             f"http://127.0.0.1:{server.server_port}/api/context?record_id=abc",
             headers={"X-Codex-Usage-Token": "test-token"},
@@ -1858,9 +1902,7 @@ def test_pricing_annotation_and_doctor_pass(tmp_path: Path) -> None:
                     "ai-usage-dashboard": {
                         "command": sys.executable,
                         "args": ["-m", "codex_usage_tracker.mcp_server"],
-                        "env": {
-                            "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")
-                        },
+                        "env": {"PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")},
                     }
                 }
             }
@@ -1983,12 +2025,14 @@ def test_dashboard_defaults_to_this_week_without_load_cap_control(tmp_path: Path
     dashboard_js = (tmp_path / "codex-usage-tracker-assets" / "dashboard.js").read_text(
         encoding="utf-8"
     )
-    dashboard_state_js = (
-        tmp_path / "codex-usage-tracker-assets" / "dashboard_state.js"
-    ).read_text(encoding="utf-8")
+    dashboard_state_js = (tmp_path / "codex-usage-tracker-assets" / "dashboard_state.js").read_text(
+        encoding="utf-8"
+    )
 
     assert 'data-range="this-week"' in dashboard
-    assert "range: RANGES.has(initialState.range) ? initialState.range : 'this-week'" in dashboard_js
+    assert (
+        "range: RANGES.has(initialState.range) ? initialState.range : 'this-week'" in dashboard_js
+    )
     assert "range: ALLOWED_RANGES.has(range) ? range : 'this-week'" in dashboard_state_js
     assert 'id="loadLimit"' not in dashboard
     assert "updateLoadLimitControl" not in dashboard_js
@@ -2639,10 +2683,7 @@ def test_rollups_expose_project_identity_without_leaking_paths(tmp_path: Path) -
         pricing_path=pricing_path,
         privacy_mode="redacted",
     )
-    assert all(
-        group["project_name"].startswith("Project ")
-        for group in redacted["usage_rollups"]
-    )
+    assert all(group["project_name"].startswith("Project ") for group in redacted["usage_rollups"])
 
 
 def test_rollups_split_projects_while_keeping_totals_exact(tmp_path: Path) -> None:
@@ -2665,10 +2706,13 @@ def test_rollups_split_projects_while_keeping_totals_exact(tmp_path: Path) -> No
     # Both rollup sets aggregate the same rows, which is what lets the dashboard
     # swap to thread rollups while searching without changing any total.
     assert sum(group["event_count"] for group in payload["thread_rollups"]) == len(events)
-    assert abs(
-        sum(group["estimated_cost_usd"] for group in usage_rollups)
-        - sum(group["estimated_cost_usd"] for group in payload["thread_rollups"])
-    ) < 1e-12
+    assert (
+        abs(
+            sum(group["estimated_cost_usd"] for group in usage_rollups)
+            - sum(group["estimated_cost_usd"] for group in payload["thread_rollups"])
+        )
+        < 1e-12
+    )
 
 
 def test_rollups_carry_cache_creation_tokens(tmp_path: Path) -> None:
@@ -2706,9 +2750,7 @@ def test_dashboard_rows_carry_cost_components_for_the_call_rail(tmp_path: Path) 
 
     row = dashboard_payload(db_path=db_path, pricing_path=pricing_path)["rows"][0]
     components = (
-        row["cost_uncached_input_usd"]
-        + row["cost_cached_input_usd"]
-        + row["cost_output_usd"]
+        row["cost_uncached_input_usd"] + row["cost_cached_input_usd"] + row["cost_output_usd"]
     )
     assert abs(components - row["estimated_cost_usd"]) < 1e-12
 
