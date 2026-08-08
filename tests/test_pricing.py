@@ -37,6 +37,44 @@ OPENAI_PRICING_FIXTURE = """
 />
 """
 
+OPENAI_PRICING_TABLE_FIXTURE = """
+# Pricing
+
+Standard
+
+### Standard pricing data
+
+| Model | Short context input | Short context cached input | Short context cache writes | Short context output | Long context input | Long context cached input | Long context cache writes | Long context output |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| gpt-5.6-sol | $5.00 | $0.50 | $6.25 | $30.00 | $10.00 | $1.00 | $12.50 | $45.00 |
+| gpt-5.5 (<272K context length) | $5.00 | $0.50 | - | $30.00 | $10.00 | $1.00 | - | $45.00 |
+| gpt-5.4-mini | $0.75 | $0.075 | - | $4.50 | - | - | - | - |
+| gpt-5-pro | $15.00 | - | - | $120.00 | - | - | - | - |
+| omni-moderation-latest | Free | - | - | - | - | - | - | - |
+
+Priority processing was renamed Fast mode on July 30, 2026.
+
+### Batch pricing data
+
+| Model | Short context input | Short context cached input | Short context cache writes | Short context output | Long context input | Long context cached input | Long context cache writes | Long context output |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| gpt-5.5 (<272K context length) | $2.50 | $0.25 | - | $15.00 | $5.00 | $0.50 | - | $22.50 |
+
+Fast mode
+
+### Fast pricing data
+
+| Model | Short context input | Short context cached input | Short context cache writes | Short context output | Long context input | Long context cached input | Long context cache writes | Long context output |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| gpt-5.6-sol | $10.00 | $1.00 | $12.50 | $60.00 | $20.00 | $2.00 | $25.00 | $90.00 |
+
+### Grouped Pricing Table data
+
+| Model | Modality | Input | Cached input | Output / cost |
+| --- | --- | --- | --- | --- |
+| gpt-realtime-2.1 | Audio | $32.00 | $0.40 | $64.00 |
+"""
+
 DEEPSEEK_PRICING_FIXTURE = """
 <table>
   <tr>
@@ -169,6 +207,106 @@ def test_parse_openai_pricing_markdown_reports_schema_changes() -> None:
             raise AssertionError("expected PricingParseError")
 
 
+def test_parse_openai_pricing_markdown_parses_markdown_tables() -> None:
+    models = parse_openai_pricing_markdown(OPENAI_PRICING_TABLE_FIXTURE, tier="standard")
+
+    # Short-context rates only: gpt-5.6-sol's long-context band ($10/$1/$45)
+    # must not leak in, and the context-length suffix is stripped.
+    assert models["gpt-5.6-sol"] == {
+        "input_per_million": 5.0,
+        "cached_input_per_million": 0.5,
+        "output_per_million": 30.0,
+    }
+    assert models["gpt-5.5"] == {
+        "input_per_million": 5.0,
+        "cached_input_per_million": 0.5,
+        "output_per_million": 30.0,
+    }
+    assert models["gpt-5.4-mini"]["output_per_million"] == 4.5
+    # A dash in the cached column falls back to the input rate.
+    assert models["gpt-5-pro"]["cached_input_per_million"] == 15.0
+    # Rows without a numeric input/output pair are skipped, not fatal.
+    assert "omni-moderation-latest" not in models
+
+
+def test_parse_openai_pricing_markdown_markdown_tables_use_requested_tier() -> None:
+    models = parse_openai_pricing_markdown(OPENAI_PRICING_TABLE_FIXTURE, tier="batch")
+
+    assert models == {
+        "gpt-5.5": {
+            "input_per_million": 2.5,
+            "cached_input_per_million": 0.25,
+            "output_per_million": 15.0,
+        }
+    }
+
+
+def test_parse_openai_pricing_markdown_accepts_fast_heading_for_priority_tier() -> None:
+    models = parse_openai_pricing_markdown(OPENAI_PRICING_TABLE_FIXTURE, tier="priority")
+
+    assert models == {
+        "gpt-5.6-sol": {
+            "input_per_million": 10.0,
+            "cached_input_per_million": 1.0,
+            "output_per_million": 60.0,
+        }
+    }
+
+
+def test_parse_openai_pricing_markdown_matches_columns_by_header_name() -> None:
+    reordered = """
+### Standard pricing data
+
+| Model | Long context input | Long context output | Short context output | Short context cached input | Short context input |
+| --- | --- | --- | --- | --- | --- |
+| gpt-5.6-sol | $10.00 | $45.00 | $30.00 | $0.50 | $5.00 |
+"""
+    models = parse_openai_pricing_markdown(reordered, tier="standard")
+    assert models["gpt-5.6-sol"] == {
+        "input_per_million": 5.0,
+        "cached_input_per_million": 0.5,
+        "output_per_million": 30.0,
+    }
+
+    missing_columns = """
+### Standard pricing data
+
+| Model | Long context input | Long context output |
+| --- | --- | --- |
+| gpt-5.6-sol | $10.00 | $45.00 |
+"""
+    try:
+        parse_openai_pricing_markdown(missing_columns, tier="standard")
+    except PricingParseError as exc:
+        assert "short-context input/output columns" in str(exc)
+    else:
+        raise AssertionError("expected PricingParseError")
+
+
+def test_parse_openai_pricing_markdown_reports_unparseable_markdown_rows() -> None:
+    no_rows = """
+### Standard pricing data
+
+| Model | Short context input | Short context cached input | Short context output |
+| --- | --- | --- | --- |
+| gpt-5.6-sol | - | - | - |
+"""
+    junk_price = no_rows.replace("| gpt-5.6-sol | - | - | - |", "| gpt-5.6-sol | call us | - | - |")
+    missing_table = "### Standard pricing data\n\nno table here\n"
+
+    for source, expected in [
+        (no_rows, "no parseable text-token pricing rows"),
+        (junk_price, "price cell"),
+        (missing_table, "not followed by a Markdown table"),
+    ]:
+        try:
+            parse_openai_pricing_markdown(source, tier="standard")
+        except PricingParseError as exc:
+            assert expected in str(exc)
+        else:
+            raise AssertionError("expected PricingParseError")
+
+
 def test_parse_deepseek_pricing_html() -> None:
     models = pricing_module.parse_deepseek_pricing_html(DEEPSEEK_PRICING_FIXTURE)
 
@@ -257,9 +395,9 @@ def test_update_pricing_from_openai_docs_can_include_deepseek_docs(tmp_path: Pat
 
     result = update_pricing_from_openai_docs(
         pricing_path,
-        fetch_text=lambda url: OPENAI_PRICING_FIXTURE
-        if url == OPENAI_PRICING_MD_URL
-        else DEEPSEEK_PRICING_FIXTURE,
+        fetch_text=lambda url: (
+            OPENAI_PRICING_FIXTURE if url == OPENAI_PRICING_MD_URL else DEEPSEEK_PRICING_FIXTURE
+        ),
         include_deepseek=True,
     )
     raw = json.loads(pricing_path.read_text(encoding="utf-8"))
@@ -338,9 +476,9 @@ def test_update_pricing_from_openai_docs_can_include_anthropic_docs(tmp_path: Pa
 
     result = update_pricing_from_openai_docs(
         pricing_path,
-        fetch_text=lambda url: OPENAI_PRICING_FIXTURE
-        if url == OPENAI_PRICING_MD_URL
-        else ANTHROPIC_PRICING_FIXTURE,
+        fetch_text=lambda url: (
+            OPENAI_PRICING_FIXTURE if url == OPENAI_PRICING_MD_URL else ANTHROPIC_PRICING_FIXTURE
+        ),
         include_anthropic=True,
     )
     raw = json.loads(pricing_path.read_text(encoding="utf-8"))
